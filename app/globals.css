@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@theme {
+  /* Surfaces */
+  --color-canvas: #FAFAF9;        /* page background — warm-stone, near-white paper */
+  --color-paper: #FFFFFF;         /* card surface — the ONLY surface above canvas */
+  --color-stone-100: #F5F4F1;     /* inset panels (pain point box, pitch box) */
+
+  /* Text */
+  --color-ink: #0C0A09;           /* primary text/headings — ink-black */
+  --color-ink-soft: #292524;      /* secondary headings */
+  --color-warm-gray: #78716C;     /* body/meta text */
+  --color-ash-gray: #A8A29E;      /* placeholders, disabled, icon strokes */
+  --color-hairline: #E8E6E5;      /* borders — primary structural device */
+  --color-stone-muted: #D6D3D1;   /* secondary borders, progress-bar tracks */
+
+  /* The one accent */
+  --color-cyan: #3BA6F1;          /* primary CTA fill */
+  --color-cyan-edge: #3398E1;     /* links, outlined emphasis, chart line color */
+  --color-sky-wash: #C1E1F7;      /* highlight-span background, High-Intent pill background */
+
+  /* Dark contrast panel — used ONCE */
+  --color-soot: #1C1917;          /* active nav pill fill, Discovery Heatmap panel background */
+  --color-soot-dot-off: #33302C;  /* empty heatmap dot on the soot panel */
+
+  --font-inter: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-inter-tight: 'Inter Tight', ui-sans-serif, system-ui, sans-serif;
+
+  /* Radius — tightened from v1 */
+  --radius-shell: 20px;   /* outer bento / kanban-column / header containers */
+  --radius-cards: 12px;   /* standard cards */
+  --radius-panel: 10px;   /* inset panels */
+  --radius-buttons: 999px;
+  --radius-badges: 999px;
+  --radius-inputs: 8px;
+  --radius-chip: 8px;
+
+  /* Shadows — hairline-first; shadow is the exception */
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 12px 45px rgba(17, 12, 46, 0.12); /* reserved for Inspector Panel only */
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-inter);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Cards are flat by default. The border IS the structure. */
+.card-flat {
+  box-shadow: var(--shadow-subtle);
+  transition: box-shadow 0.15s ease;
+}
+.card-flat:hover {
+  box-shadow: var(--shadow-md);
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-hairline); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-stone-muted); }
