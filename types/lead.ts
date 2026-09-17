@@ -29,6 +29,7 @@ export interface Lead {
   prospect_score?: number; // 1 - 10
   audit_friction_points?: string[];
   direct_contact_channel?: 'whatsapp' | 'instagram_dm' | 'phone' | 'email';
+  recommended_service?: string;
 
   // Persistence metadata
   updated_at?: string;

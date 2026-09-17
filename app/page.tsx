@@ -26,13 +26,18 @@ import {
   MapPin,
   Phone,
   Globe,
-  Flame
+  Flame,
+  ShieldAlert
 } from 'lucide-react';
 import { Lead, LeadStatus, Platform } from '@/types/lead';
 import rawLeads from '@/data/leads.json';
 import { supabase } from '@/lib/supabase';
 import { ScraperModal } from '@/components/ScraperModal';
-import { LeadCard, isLegitWebsiteUrl } from '@/components/LeadCard';
+import { LeadCard, isLegitWebsiteUrl, getServiceBadgeInfo } from '@/components/LeadCard';
+import { OutreachApprovalQueue } from '@/components/OutreachApprovalQueue';
+import { ResearchRunsPanel } from '@/components/ResearchRunsPanel';
+import { ResearchCampaignModal } from '@/components/ResearchCampaignModal';
+import { AgentMissionControl, AgentSwarmStatusPill } from '@/components/AgentMissionControl';
 import { formatRelativeDate, isValidUuid } from '@/lib/format-date';
 
 const InstagramIcon = ({ className = "w-3.5 h-3.5" }: { className?: string }) => (
@@ -82,9 +87,10 @@ function InspectorBody({
   const isMetaAds = lead.source_platform === 'meta_ads';
   const isLocalLead = isGoogleMaps || isMetaAds;
   const score = lead.prospect_score ?? lead.confidence_score ?? 0;
+  const serviceBadge = getServiceBadgeInfo(lead.recommended_service);
   const phoneClean = (lead.phone_number || '').replace(/[^0-9]/g, '');
   const whatsAppUrl = phoneClean
-    ? `https://wa.me/${phoneClean}?text=${encodeURIComponent(lead.draft_pitch || `Hi ${lead.business_name || lead.title}, saw your active ad campaign.`)}`
+    ? `https://wa.me/${phoneClean}?text=${encodeURIComponent(lead.draft_pitch || `Hi ${lead.business_name || lead.title}, saw your active business listing.`)}`
     : null;
   const sourceExternalUrl = lead.google_maps_url || lead.source_url;
 
@@ -103,6 +109,14 @@ function InspectorBody({
             </span>
             <span>•</span>
             <span className="text-[11px] text-[var(--color-ink-soft)] font-medium">{lead.business_type}</span>
+            {serviceBadge && (
+              <>
+                <span>•</span>
+                <span className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border ${serviceBadge.bg} ${serviceBadge.text} ${serviceBadge.border}`}>
+                  {serviceBadge.label}
+                </span>
+              </>
+            )}
             {lead.address && (
               <>
                 <span>•</span>
@@ -118,6 +132,11 @@ function InspectorBody({
               <Flame className="w-3 h-3 text-blue-600" />
               <span>Active Meta Ads</span>
             </span>
+            {serviceBadge && (
+              <span className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border ${serviceBadge.bg} ${serviceBadge.text} ${serviceBadge.border}`}>
+                {serviceBadge.label}
+              </span>
+            )}
             {typeof lead.rating === 'number' && lead.rating > 0 && (
               <>
                 <span>•</span>
@@ -143,6 +162,11 @@ function InspectorBody({
         ) : (
           <div className="flex items-center gap-2 mt-1.5 text-xs text-[var(--color-warm-gray)] flex-wrap">
             <span className="font-medium text-[var(--color-ink)]">{lead.author}</span>
+            {serviceBadge && (
+              <span className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border ${serviceBadge.bg} ${serviceBadge.text} ${serviceBadge.border}`}>
+                {serviceBadge.label}
+              </span>
+            )}
             <span>•</span>
             <span>Confidence Score: </span>
             <span className={`font-medium ${score >= 8 ? 'text-[var(--color-cyan-edge)]' : 'text-[var(--color-ink)]'}`}>
@@ -285,7 +309,18 @@ function InspectorBody({
           <div className="flex items-center gap-1.5">
             <Sparkles className="w-4 h-4 text-[var(--color-cyan-edge)]" />
             <span className="text-xs font-medium text-[var(--color-ink)]">
-              {isMetaAds ? 'AI Meta Ads WhatsApp Audit Pitch' : isGoogleMaps ? 'AI WhatsApp Operational Audit Pitch' : 'AI-Generated Value Pitch'}
+              {(() => {
+                switch (lead.recommended_service) {
+                  case 'website_development': return 'AI Website Conversion Audit Pitch';
+                  case 'booking_automation': return 'AI Online Calendar Booking Audit Pitch';
+                  case 'whatsapp_automation': return 'AI 24/7 Inquiry Capture Audit Pitch';
+                  case 'lead_automation': return 'AI Speed-to-Lead & Ad Audit Pitch';
+                  case 'ai_agents': return 'AI Inquiry Assistant Audit Pitch';
+                  case 'crm_workflow_automation': return 'AI CRM & Workflow Sync Pitch';
+                  case 'business_automation': return 'AI Operational Deal Flow Pitch';
+                  default: return isMetaAds ? 'AI Meta Ads Conversion Pitch' : isGoogleMaps ? 'AI Operational Audit Pitch' : 'AI-Generated Value Pitch';
+                }
+              })()}
             </span>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -293,22 +328,32 @@ function InspectorBody({
               <CheckCircle2 className="w-3 h-3 text-emerald-600" />
               <span>Anti-Spam Verified</span>
             </span>
-            {isLocalLead && (
+            {phoneClean ? (
               <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                 1-Click WhatsApp Ready
               </span>
-            )}
+            ) : lead.website_url ? (
+              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                Website Audit Ready
+              </span>
+            ) : null}
           </div>
         </div>
 
         <div className="bg-[var(--color-stone-100)] border border-[var(--color-hairline)] rounded-[var(--radius-panel)] p-4 text-xs text-[var(--color-ink)] leading-relaxed whitespace-pre-wrap select-text font-mono max-h-44 overflow-y-auto break-words">
           {lead.draft_pitch || 'No draft pitch generated for this lead.'}
         </div>
+
+        {/* Prominent Human Approval Boundary Notice */}
+        <div className="p-2.5 rounded-[var(--radius-panel)] bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-900 flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+          <span><strong>Human Approval Boundary:</strong> Nothing is sent automatically. Manual human approval required.</span>
+        </div>
       </div>
 
       {/* Action Buttons */}
       <div className="space-y-2.5 pt-2">
-        {/* Primary Direct Action Button (1-Click WhatsApp for Local & Meta Ads) */}
+        {/* Primary Direct Action Button (1-Click WhatsApp if phone exists, else Visit Website) */}
         {isLocalLead && whatsAppUrl ? (
           <a
             href={whatsAppUrl}
@@ -318,6 +363,17 @@ function InspectorBody({
           >
             <WhatsAppIcon className="w-4 h-4" />
             <span>Open in WhatsApp (1-Click Outreach)</span>
+            <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+          </a>
+        ) : lead.website_url ? (
+          <a
+            href={lead.website_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full py-3 px-4 rounded-full bg-[var(--color-soot)] hover:bg-[var(--color-ink)] text-white text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
+          >
+            <Globe className="w-4 h-4" />
+            <span>Visit Business Website</span>
             <ExternalLink className="w-3.5 h-3.5 opacity-80" />
           </a>
         ) : null}
@@ -401,17 +457,11 @@ function isValidRealLead(lead: Lead): boolean {
   if (
     sourceUrl.includes('ad_475816') ||
     sourceUrl.includes('ad_438573') ||
-    sourceUrl.includes('ad_101010') ||
     businessName.includes('475816') ||
     businessName.includes('438573') ||
     title.includes('475816') ||
     title.includes('438573')
   ) {
-    return false;
-  }
-
-  // Filter out placeholder Facebook ad links
-  if (sourceUrl.includes('facebook.com/ads/library/?id=ad_') && !sourceUrl.includes('facebook.com/ads/library/?id=act_')) {
     return false;
   }
 
@@ -478,6 +528,30 @@ function normalizeBusinessName(rawName?: string | null): string {
 }
 
 /**
+ * Categorize lead into vertical
+ */
+function getLeadVertical(lead: Lead): 'skin' | 'dental' | 'hair' | 'salon' | 'other' {
+  const text = `${lead.business_type || ''} ${lead.business_name || lead.title || ''}`.toLowerCase();
+  if (text.includes('skin') || text.includes('derma') || text.includes('aesthetic') || text.includes('laser')) return 'skin';
+  if (text.includes('dental') || text.includes('dentist') || text.includes('implant') || text.includes('teeth')) return 'dental';
+  if (text.includes('hair') || text.includes('transplant') || text.includes('follicle')) return 'hair';
+  if (text.includes('salon') || text.includes('spa') || text.includes('beauty') || text.includes('make-up')) return 'salon';
+  return 'other';
+}
+
+/**
+ * Categorize lead into Delhi NCR region
+ */
+function getLeadRegion(lead: Lead): 'south' | 'west' | 'north_central' | 'ncr_satellite' | 'other' {
+  const addr = `${lead.address || ''} ${lead.business_name || ''} ${lead.body_text || ''}`.toLowerCase();
+  if (addr.includes('south') || addr.includes('safdarjung') || addr.includes('kailash') || addr.includes('vasant') || addr.includes('saket') || addr.includes('green park') || addr.includes('hauz khas') || addr.includes('defence colony') || addr.includes('lajpat')) return 'south';
+  if (addr.includes('rajouri') || addr.includes('vikaspuri') || addr.includes('janakpuri') || addr.includes('punjabi bagh') || addr.includes('paschim vihar') || addr.includes('dwarka') || addr.includes('west')) return 'west';
+  if (addr.includes('kamla nagar') || addr.includes('rohini') || addr.includes('pitampura') || addr.includes('swasthya vihar') || addr.includes('preet vihar') || addr.includes('north') || addr.includes('central') || addr.includes('enclave')) return 'north_central';
+  if (addr.includes('gurgaon') || addr.includes('gurugram') || addr.includes('noida') || addr.includes('ghaziabad') || addr.includes('faridabad')) return 'ncr_satellite';
+  return 'other';
+}
+
+/**
  * Enforces business-level deduplication:
  * 1 Business = Exactly 1 Lead Card in Dashboard
  */
@@ -510,13 +584,16 @@ const INITIAL_LEADS: Lead[] = (Array.isArray(rawLeads) && rawLeads.length > 0)
   ? deduplicateLeads((rawLeads as Lead[]).filter(isValidRealLead))
   : [];
 
-const LOCAL_STORAGE_KEY = 'lead_command_center_clean_v6';
+const LOCAL_STORAGE_KEY = 'leadpulse_v2_clean_delhi_leads_v2';
 
 export default function LeadCommandCenter() {
   const [leads, setLeads] = useState<Lead[]>(INITIAL_LEADS);
   const [activeLeadId, setActiveLeadId] = useState<string>(INITIAL_LEADS[0]?.id || '');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedSubreddit, setSelectedSubreddit] = useState<string>('all');
+  const [selectedVertical, setSelectedVertical] = useState<string>('all');
+  const [selectedService, setSelectedService] = useState<string>('all');
+  const [selectedRegion, setSelectedRegion] = useState<string>('all');
+  const [selectedScoreTier, setSelectedScoreTier] = useState<'all' | 'immediate' | 'high_potential'>('all');
   const [selectedPlatform, setSelectedPlatform] = useState<'all' | Platform>('all');
   const [selectedStatus, setSelectedStatus] = useState<'all' | LeadStatus>('all');
   const [copied, setCopied] = useState(false);
@@ -524,6 +601,9 @@ export default function LeadCommandCenter() {
   const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isScraperOpen, setIsScraperOpen] = useState(false);
+  const [isResearchModalOpen, setIsResearchModalOpen] = useState(false);
+  const [isMissionControlOpen, setIsMissionControlOpen] = useState(false);
+  const [activeView, setActiveView] = useState<'leads' | 'outreach' | 'research'>('leads');
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
@@ -539,6 +619,8 @@ export default function LeadCommandCenter() {
 
     // Purge legacy localStorage caches containing old mock data or duplicates
     try {
+      localStorage.removeItem('leadpulse_v2_clean_delhi_leads_v1');
+      localStorage.removeItem('lead_command_center_clean_v6');
       localStorage.removeItem('lead_command_center_clean_v5');
       localStorage.removeItem('shadcn_lead_pipeline_v3');
       localStorage.removeItem('shadcn_lead_pipeline_v2');
@@ -723,60 +805,58 @@ export default function LeadCommandCenter() {
     return leads.find((l) => l.id === activeLeadId) || leads[0] || null;
   }, [leads, activeLeadId]);
 
-  // Unique subreddits for filter tags
-  const subreddits = useMemo(() => {
-    const subs = Array.from(new Set(leads.map((l) => l.subreddit_or_handle)));
-    return ['all', ...subs];
-  }, [leads]);
-
   // Stat Ribbon Metrics
   const stats = useMemo(() => {
     const total = leads.length;
-    const highConfidence = leads.filter((l) => l.confidence_score >= 8).length;
+    const immediate = leads.filter((l) => (l.prospect_score ?? l.confidence_score ?? 0) >= 8).length;
+    const highPotential = leads.filter((l) => {
+      const s = l.prospect_score ?? l.confidence_score ?? 0;
+      return s >= 6 && s < 8;
+    }).length;
     const pitchSent = leads.filter(
       (l) => l.status === 'pitch_sent' || l.status === 'replied' || l.status === 'meeting_booked'
     ).length;
     const bookedCalls = leads.filter((l) => l.status === 'meeting_booked').length;
     const replied = leads.filter((l) => l.status === 'replied' || l.status === 'meeting_booked').length;
 
-    return { total, highConfidence, pitchSent, bookedCalls, replied };
+    return { total, immediate, highPotential, pitchSent, bookedCalls, replied };
   }, [leads]);
 
   // 4-Stage Conversion Funnel Calculations
   const funnelStages = useMemo(() => {
-    const stage1 = stats.total > 0 ? Math.round((stats.pitchSent / stats.total) * 100) : 0;
-    const stage2 = stats.pitchSent > 0 ? Math.round((stats.replied / stats.pitchSent) * 100) : 0;
-    const stage3 = stats.replied > 0 ? Math.round((stats.bookedCalls / stats.replied) * 100) : 0;
+    const stage1 = stats.total > 0 ? Math.round((stats.immediate / stats.total) * 100) : 0;
+    const stage2 = stats.immediate > 0 ? Math.round((stats.pitchSent / stats.immediate) * 100) : 0;
+    const stage3 = stats.pitchSent > 0 ? Math.round((stats.bookedCalls / stats.pitchSent) * 100) : 0;
     const stage4 = stats.total > 0 ? Math.round((stats.bookedCalls / stats.total) * 100) : 0;
 
     return [
       {
         id: 'stage-1',
-        label: 'Discovered → Pitched',
+        label: 'Discovered → Immediate (≥8)',
         percentage: stage1,
         fillColor: 'var(--color-ink)',
-        description: `${stats.pitchSent} of ${stats.total} pitched`,
+        description: `${stats.immediate} of ${stats.total} hot prospects`,
       },
       {
         id: 'stage-2',
-        label: 'Pitched → Replied',
+        label: 'Immediate → WhatsApp Pitched',
         percentage: stage2,
         fillColor: 'var(--color-ink)',
-        description: `${stats.replied} of ${stats.pitchSent} replied`,
+        description: `${stats.pitchSent} of ${stats.immediate} outreach delivered`,
       },
       {
         id: 'stage-3',
-        label: 'Replied → Booked',
+        label: 'Pitched → Booked Consult',
         percentage: stage3,
         fillColor: 'var(--color-ink)',
-        description: `${stats.bookedCalls} of ${stats.replied} booked`,
+        description: `${stats.bookedCalls} of ${stats.pitchSent} calls booked`,
       },
       {
         id: 'stage-4',
-        label: 'Overall Conversion',
+        label: 'Overall Deal Conversion',
         percentage: stage4,
         fillColor: 'var(--color-cyan)',
-        description: `${stats.bookedCalls} of ${stats.total} total leads`,
+        description: `${stats.bookedCalls} booked calls out of ${stats.total}`,
       },
     ];
   }, [stats]);
@@ -785,10 +865,44 @@ export default function LeadCommandCenter() {
   const platformCounts = useMemo(() => {
     return {
       all: leads.length,
-      meta_ads: leads.filter((l) => l.source_platform === 'meta_ads' || l.has_active_ads).length,
       google_maps: leads.filter((l) => l.source_platform === 'google_maps').length,
-      reddit: leads.filter((l) => l.source_platform === 'reddit' || !l.source_platform).length,
-      x: leads.filter((l) => l.source_platform === 'x').length,
+      meta_ads: leads.filter((l) => l.source_platform === 'meta_ads' || l.has_active_ads).length,
+    };
+  }, [leads]);
+
+  // Vertical Counts
+  const verticalCounts = useMemo(() => {
+    return {
+      all: leads.length,
+      skin: leads.filter((l) => getLeadVertical(l) === 'skin').length,
+      dental: leads.filter((l) => getLeadVertical(l) === 'dental').length,
+      hair: leads.filter((l) => getLeadVertical(l) === 'hair').length,
+      salon: leads.filter((l) => getLeadVertical(l) === 'salon').length,
+    };
+  }, [leads]);
+
+  // Service Counts for filter bar
+  const serviceCounts = useMemo(() => {
+    return {
+      all: leads.length,
+      website_development: leads.filter((l) => l.recommended_service === 'website_development').length,
+      booking_automation: leads.filter((l) => l.recommended_service === 'booking_automation').length,
+      whatsapp_automation: leads.filter((l) => l.recommended_service === 'whatsapp_automation' || (!l.recommended_service && l.direct_contact_channel === 'whatsapp')).length,
+      lead_automation: leads.filter((l) => l.recommended_service === 'lead_automation').length,
+      ai_agents: leads.filter((l) => l.recommended_service === 'ai_agents').length,
+      crm_workflow_automation: leads.filter((l) => l.recommended_service === 'crm_workflow_automation').length,
+      business_automation: leads.filter((l) => l.recommended_service === 'business_automation').length,
+    };
+  }, [leads]);
+
+  // Region Counts
+  const regionCounts = useMemo(() => {
+    return {
+      all: leads.length,
+      south: leads.filter((l) => getLeadRegion(l) === 'south').length,
+      west: leads.filter((l) => getLeadRegion(l) === 'west').length,
+      north_central: leads.filter((l) => getLeadRegion(l) === 'north_central').length,
+      ncr_satellite: leads.filter((l) => getLeadRegion(l) === 'ncr_satellite').length,
     };
   }, [leads]);
 
@@ -799,18 +913,35 @@ export default function LeadCommandCenter() {
         const q = searchQuery.toLowerCase();
         const matchesAuthor = lead.author?.toLowerCase().includes(q) || false;
         const matchesBusinessName = lead.business_name?.toLowerCase().includes(q) || false;
-        const matchesSub = lead.subreddit_or_handle?.toLowerCase().includes(q) || false;
         const matchesTitle = lead.title?.toLowerCase().includes(q) || false;
         const matchesProblem = lead.identified_problem?.toLowerCase().includes(q) || false;
         const matchesBusiness = lead.business_type?.toLowerCase().includes(q) || false;
         const matchesPhone = lead.phone_number?.toLowerCase().includes(q) || false;
-        if (!matchesAuthor && !matchesBusinessName && !matchesSub && !matchesTitle && !matchesProblem && !matchesBusiness && !matchesPhone) {
+        const matchesAddress = lead.address?.toLowerCase().includes(q) || false;
+        if (!matchesAuthor && !matchesBusinessName && !matchesTitle && !matchesProblem && !matchesBusiness && !matchesPhone && !matchesAddress) {
           return false;
         }
       }
 
-      if (selectedSubreddit !== 'all' && lead.subreddit_or_handle !== selectedSubreddit) {
+      if (selectedVertical !== 'all' && getLeadVertical(lead) !== selectedVertical) {
         return false;
+      }
+
+      if (selectedService !== 'all') {
+        const s = lead.recommended_service || (lead.direct_contact_channel === 'whatsapp' ? 'whatsapp_automation' : 'business_automation');
+        if (s !== selectedService) {
+          return false;
+        }
+      }
+
+      if (selectedRegion !== 'all' && getLeadRegion(lead) !== selectedRegion) {
+        return false;
+      }
+
+      if (selectedScoreTier !== 'all') {
+        const score = lead.prospect_score ?? lead.confidence_score ?? 0;
+        if (selectedScoreTier === 'immediate' && score < 8) return false;
+        if (selectedScoreTier === 'high_potential' && (score < 6 || score >= 8)) return false;
       }
 
       if (selectedPlatform !== 'all') {
@@ -819,7 +950,7 @@ export default function LeadCommandCenter() {
             return false;
           }
         } else {
-          const leadPlatform = lead.source_platform || 'reddit';
+          const leadPlatform = lead.source_platform || 'google_maps';
           if (leadPlatform !== selectedPlatform) {
             return false;
           }
@@ -832,7 +963,7 @@ export default function LeadCommandCenter() {
 
       return true;
     });
-  }, [leads, searchQuery, selectedSubreddit, selectedPlatform, selectedStatus]);
+  }, [leads, searchQuery, selectedVertical, selectedService, selectedRegion, selectedScoreTier, selectedPlatform, selectedStatus]);
 
   // Copy Pitch
   const handleCopyPitch = () => {
@@ -930,16 +1061,66 @@ export default function LeadCommandCenter() {
             </div>
           </div>
 
+          {/* Center: View Switcher Tabs */}
+          <div className="flex items-center bg-[var(--color-stone-100)] p-1 rounded-full border border-[var(--color-hairline)] shadow-2xs">
+            <button
+              onClick={() => setActiveView('leads')}
+              className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeView === 'leads'
+                  ? 'bg-[var(--color-soot)] text-white shadow-xs'
+                  : 'text-[var(--color-warm-gray)] hover:text-[var(--color-ink)]'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Delhi Clinic Leads ({leads.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveView('outreach')}
+              className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeView === 'outreach'
+                  ? 'bg-[var(--color-soot)] text-white shadow-xs'
+                  : 'text-[var(--color-warm-gray)] hover:text-[var(--color-ink)]'
+              }`}
+            >
+              <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
+              <span>Outreach Approval Queue</span>
+            </button>
+            <button
+              onClick={() => setActiveView('research')}
+              className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeView === 'research'
+                  ? 'bg-[var(--color-soot)] text-white shadow-xs'
+                  : 'text-[var(--color-warm-gray)] hover:text-[var(--color-ink)]'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+              <span>Autonomous Research (V2)</span>
+            </button>
+          </div>
+
           {/* Right: Actions */}
           <div className="flex items-center gap-2">
+            {/* Live Agent Swarm Telemetry Pill */}
+            <AgentSwarmStatusPill onClick={() => setIsMissionControlOpen(true)} />
+
+            {/* Start Research V2 CTA */}
+            <button
+              onClick={() => setIsResearchModalOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xs font-medium shadow-sm transition-all cursor-pointer"
+              title="Launch V2 Multi-Agent Autonomous Research Swarm"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Start Research</span>
+            </button>
+
             {/* Run Scraper CTA */}
             <button
               onClick={() => setIsScraperOpen(true)}
               className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#0a0a0a] hover:bg-[#171717] text-white text-xs font-medium shadow-sm transition-all cursor-pointer"
-              title="Run Autonomous Scraper via Apify & Gemini"
+              title="Run Targeted Google Maps & Meta Ads Scraper"
             >
               <Terminal className="w-3.5 h-3.5" />
-              <span>Run Scraper</span>
+              <span>Quick Scraper</span>
             </button>
 
             {/* Sync Supabase */}
@@ -950,7 +1131,7 @@ export default function LeadCommandCenter() {
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-transparent hover:bg-[var(--color-stone-100)] border border-[var(--color-hairline)] text-[var(--color-ink)] text-xs font-medium transition-all cursor-pointer disabled:opacity-50"
             >
               <RotateCcw className={`w-3.5 h-3.5 text-[var(--color-warm-gray)] ${isSyncing ? 'animate-spin' : ''}`} />
-              <span>{isSyncing ? 'Syncing...' : 'Sync Supabase'}</span>
+              <span>{isSyncing ? 'Syncing...' : 'Sync Database'}</span>
             </button>
 
             {/* Export Leads */}
@@ -967,20 +1148,28 @@ export default function LeadCommandCenter() {
 
       {/* Main Content */}
       <div className="w-full px-10 xl:px-14 2xl:px-20 py-8 space-y-7">
-
-        {/* ────────────────── PIPELINE OVERVIEW + CONVERSION FUNNEL STRIP ────────────────── */}
+        {activeView === 'research' ? (
+          <ResearchRunsPanel
+            onNotify={showToast}
+            onViewLeads={() => setActiveView('leads')}
+          />
+        ) : activeView === 'outreach' ? (
+          <OutreachApprovalQueue leads={leads} onNotify={showToast} />
+        ) : (
+          <>
+            {/* ────────────────── PIPELINE OVERVIEW + CONVERSION FUNNEL STRIP ────────────────── */}
         <section className="space-y-4">
           <div className="flex items-end justify-between gap-4">
             <div>
               <span className="text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--color-warm-gray)] block">
-                PIPELINE OVERVIEW
+                DELHI NCR HIGH-TICKET PROSPECT PIPELINE
               </span>
-              <h1 className="text-4xl font-[family-name:var(--font-inter-tight)] font-normal tracking-tight text-[var(--color-ink)] mt-1">
-                <span className="px-1.5 py-0.5 rounded-md bg-[var(--color-sky-wash)] text-[var(--color-cyan-edge)]">{stats.total}</span>{' '}
-                leads across {Math.max(1, subreddits.length - 1)} channels
+              <h1 className="text-3xl sm:text-4xl font-[family-name:var(--font-inter-tight)] font-normal tracking-tight text-[var(--color-ink)] mt-1">
+                <span className="px-2 py-0.5 rounded-md bg-[var(--color-sky-wash)] text-[var(--color-cyan-edge)] font-semibold">{stats.total}</span>{' '}
+                verified clinic prospects across Delhi NCR
               </h1>
               <p className="text-sm text-[var(--color-warm-gray)] font-normal mt-1">
-                Autonomous opportunity discovery & AI outreach pipeline
+                Local business discovery, 10-point scorecard auditing & 1-click WhatsApp deal flow
               </p>
             </div>
           </div>
@@ -1016,55 +1205,59 @@ export default function LeadCommandCenter() {
 
         {/* ────────────────── KPI STAT CARDS ────────────────── */}
         <section className="grid grid-cols-4 gap-4">
-          {/* Card 1: Total Tracked */}
+          {/* Card 1: Total Discovered */}
           <div
-            onClick={() => { setSelectedStatus('all'); setSelectedSubreddit('all'); setSelectedPlatform('all'); }}
-            className="bg-[var(--color-paper)] p-8 rounded-[var(--radius-cards)] border border-[var(--color-hairline)] card-flat cursor-pointer flex flex-col justify-between transition-all"
+            onClick={() => { setSelectedStatus('all'); setSelectedVertical('all'); setSelectedRegion('all'); setSelectedScoreTier('all'); setSelectedPlatform('all'); }}
+            className="bg-[var(--color-paper)] p-7 rounded-[var(--radius-cards)] border border-[var(--color-hairline)] card-flat cursor-pointer flex flex-col justify-between transition-all"
           >
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <span className="text-[11px] text-[var(--color-warm-gray)] font-medium uppercase tracking-[0.05em]">
-                Total Tracked
+                Total Discovered
               </span>
               <div className="w-9 h-9 rounded-[var(--radius-chip)] bg-[var(--color-stone-100)] border border-[var(--color-hairline)] flex items-center justify-center text-[var(--color-ink)] shrink-0">
-                <Users className="w-4 h-4" />
+                <Building2 className="w-4 h-4" />
               </div>
             </div>
-            <div className="mt-4 text-4xl font-[family-name:var(--font-inter-tight)] font-normal tracking-tight text-[var(--color-ink)]">
+            <div className="mt-4 text-4xl font-[family-name:var(--font-inter-tight)] font-semibold tracking-tight text-[var(--color-ink)]">
               {stats.total}
             </div>
             <div className="mt-2 text-xs text-[var(--color-warm-gray)]">
-              Across all monitored channels
+              High-ticket Delhi NCR clinics
             </div>
           </div>
 
-          {/* Card 2: High-Intent */}
+          {/* Card 2: Immediate Outreach */}
           <div
-            onClick={() => { setSelectedStatus('all'); }}
-            className="bg-[var(--color-paper)] p-8 rounded-[var(--radius-cards)] border border-[var(--color-hairline)] card-flat cursor-pointer flex flex-col justify-between transition-all"
+            onClick={() => { setSelectedScoreTier(selectedScoreTier === 'immediate' ? 'all' : 'immediate'); }}
+            className={`bg-[var(--color-paper)] p-7 rounded-[var(--radius-cards)] border card-flat cursor-pointer flex flex-col justify-between transition-all ${
+              selectedScoreTier === 'immediate'
+                ? 'border-amber-500 ring-2 ring-amber-500/30'
+                : 'border-[var(--color-hairline)]'
+            }`}
           >
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <span className="text-[11px] text-[var(--color-warm-gray)] font-medium uppercase tracking-[0.05em]">
-                High-Intent
+                Immediate Outreach
               </span>
               <div className="flex items-center gap-1.5">
-                <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[var(--color-sky-wash)] text-[var(--color-cyan-edge)] border border-[var(--color-cyan-edge)]/30">
-                  <Target className="w-3 h-3" />
+                <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                  <Flame className="w-3 h-3 text-amber-600" />
                   Score ≥ 8
                 </span>
               </div>
             </div>
-            <div className="mt-4 text-4xl font-[family-name:var(--font-inter-tight)] font-normal tracking-tight text-[var(--color-ink)]">
-              {stats.highConfidence}
+            <div className="mt-4 text-4xl font-[family-name:var(--font-inter-tight)] font-semibold tracking-tight text-[var(--color-ink)]">
+              {stats.immediate}
             </div>
             <div className="mt-2 text-xs text-[var(--color-warm-gray)]">
-              Ready for immediate conversion
+              🔥 Hot leads ready for WhatsApp pitch
             </div>
           </div>
 
-          {/* Card 3: Pitched */}
+          {/* Card 3: WhatsApp Pitched */}
           <div
             onClick={() => setSelectedStatus(selectedStatus === 'pitch_sent' ? 'all' : 'pitch_sent')}
-            className={`bg-[var(--color-paper)] p-8 rounded-[var(--radius-cards)] border card-flat cursor-pointer flex flex-col justify-between transition-all ${
+            className={`bg-[var(--color-paper)] p-7 rounded-[var(--radius-cards)] border card-flat cursor-pointer flex flex-col justify-between transition-all ${
               selectedStatus === 'pitch_sent'
                 ? 'border-[var(--color-cyan)] ring-2 ring-[var(--color-cyan)]/30'
                 : 'border-[var(--color-hairline)]'
@@ -1072,24 +1265,24 @@ export default function LeadCommandCenter() {
           >
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <span className="text-[11px] text-[var(--color-warm-gray)] font-medium uppercase tracking-[0.05em]">
-                Pitched
+                WhatsApp Pitched
               </span>
               <div className="w-9 h-9 rounded-[var(--radius-chip)] bg-[var(--color-stone-100)] border border-[var(--color-hairline)] flex items-center justify-center text-[var(--color-ink)] shrink-0">
                 <Send className="w-4 h-4" />
               </div>
             </div>
-            <div className="mt-4 text-4xl font-[family-name:var(--font-inter-tight)] font-normal tracking-tight text-[var(--color-ink)]">
+            <div className="mt-4 text-4xl font-[family-name:var(--font-inter-tight)] font-semibold tracking-tight text-[var(--color-ink)]">
               {stats.pitchSent}
             </div>
             <div className="mt-2 text-xs text-[var(--color-warm-gray)]">
-              Proposals & DMs delivered
+              Audit pitches sent to clinic owners
             </div>
           </div>
 
-          {/* Card 4: Booked Calls */}
+          {/* Card 4: Booked Consults */}
           <div
             onClick={() => setSelectedStatus(selectedStatus === 'meeting_booked' ? 'all' : 'meeting_booked')}
-            className={`bg-[var(--color-paper)] p-8 rounded-[var(--radius-cards)] border card-flat cursor-pointer flex flex-col justify-between transition-all ${
+            className={`bg-[var(--color-paper)] p-7 rounded-[var(--radius-cards)] border card-flat cursor-pointer flex flex-col justify-between transition-all ${
               selectedStatus === 'meeting_booked'
                 ? 'border-[var(--color-cyan)] ring-2 ring-[var(--color-cyan)]/30'
                 : 'border-[var(--color-hairline)]'
@@ -1097,13 +1290,13 @@ export default function LeadCommandCenter() {
           >
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <span className="text-[11px] text-[var(--color-warm-gray)] font-medium uppercase tracking-[0.05em]">
-                Booked Calls
+                Booked Consults
               </span>
               <div className="w-9 h-9 rounded-[var(--radius-chip)] bg-[var(--color-stone-100)] border border-[var(--color-hairline)] flex items-center justify-center text-[var(--color-ink)] shrink-0">
                 <Calendar className="w-4 h-4" />
               </div>
             </div>
-            <div className="mt-4 text-4xl font-[family-name:var(--font-inter-tight)] font-normal tracking-tight text-[var(--color-ink)]">
+            <div className="mt-4 text-4xl font-[family-name:var(--font-inter-tight)] font-semibold tracking-tight text-[var(--color-ink)]">
               {stats.bookedCalls}
             </div>
             <div className="mt-2 text-xs text-[var(--color-warm-gray)]">
@@ -1115,50 +1308,115 @@ export default function LeadCommandCenter() {
         {/* ────────────────── FILTER & SEARCH SECTION ────────────────── */}
         <section className="bg-[var(--color-paper)] p-5 rounded-[var(--radius-cards)] border border-[var(--color-hairline)] card-flat space-y-4">
           
-          {/* Platform / Source Filter Pills */}
-          <div className="flex flex-wrap items-center gap-2 pb-3 border-b border-[var(--color-hairline)]">
+          {/* Row 1: Source Selector + Score Tier */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[var(--color-hairline)]">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-medium text-[var(--color-warm-gray)] uppercase tracking-[0.05em] mr-1">
+                Source:
+              </span>
+              {[
+                { id: 'all', label: 'All Sources', icon: null, count: platformCounts.all },
+                { id: 'google_maps', label: 'Google Maps', icon: '📍', count: platformCounts.google_maps },
+                { id: 'meta_ads', label: 'Meta Ads (Spenders)', icon: '🔥', count: platformCounts.meta_ads },
+              ].map((tab) => {
+                const isSelected = selectedPlatform === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setSelectedPlatform(tab.id as 'all' | Platform)}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-medium border transition-all cursor-pointer flex items-center gap-1.5 ${
+                      isSelected
+                        ? 'bg-[var(--color-soot)] text-white border-[var(--color-soot)] shadow-xs'
+                        : 'bg-[var(--color-paper)] text-[var(--color-warm-gray)] border-[var(--color-hairline)] hover:border-[var(--color-ink)] hover:text-[var(--color-ink)]'
+                    }`}
+                  >
+                    {tab.icon && <span className="text-xs">{tab.icon}</span>}
+                    <span>{tab.label}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                      isSelected ? 'bg-white/20 text-white' : 'bg-[var(--color-stone-100)] text-[var(--color-warm-gray)]'
+                    }`}>
+                      {tab.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Score Tier Toggle */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] font-medium text-[var(--color-warm-gray)] uppercase tracking-[0.05em] mr-1">
+                Score Tier:
+              </span>
+              {[
+                { id: 'all', label: 'All Scores' },
+                { id: 'immediate', label: '🔥 Immediate (8-10)' },
+                { id: 'high_potential', label: '🟢 High Potential (6-7)' },
+              ].map((tier) => {
+                const isSelected = selectedScoreTier === tier.id;
+                return (
+                  <button
+                    key={tier.id}
+                    onClick={() => setSelectedScoreTier(tier.id as any)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-[var(--color-soot)] text-white border-[var(--color-soot)] shadow-xs'
+                        : 'bg-[var(--color-stone-100)] text-[var(--color-warm-gray)] border-[var(--color-hairline)] hover:border-[var(--color-ink)] hover:text-[var(--color-ink)]'
+                    }`}
+                  >
+                    {tier.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Row 2: Service Focus Filter Tabs */}
+          <div className="flex flex-wrap items-center gap-1.5 pb-3 border-b border-[var(--color-hairline)]">
             <span className="text-[11px] font-medium text-[var(--color-warm-gray)] uppercase tracking-[0.05em] mr-1">
-              Source:
+              Service:
             </span>
             {[
-              { id: 'all', label: 'All Sources', icon: null, count: platformCounts.all },
-              { id: 'meta_ads', label: 'Meta Ads (Spenders)', icon: '🔥', count: platformCounts.meta_ads },
-              { id: 'google_maps', label: 'Google Maps', icon: '📍', count: platformCounts.google_maps },
-              { id: 'reddit', label: 'Reddit', icon: '💬', count: platformCounts.reddit },
-              { id: 'x', label: 'X', icon: '🐦', count: platformCounts.x },
-            ].map((tab) => {
-              const isSelected = selectedPlatform === tab.id;
+              { id: 'all', label: 'All Services', count: serviceCounts.all },
+              { id: 'website_development', label: '🌐 Website Dev', count: serviceCounts.website_development },
+              { id: 'booking_automation', label: '📅 Online Booking', count: serviceCounts.booking_automation },
+              { id: 'whatsapp_automation', label: '💬 Inquiry Capture', count: serviceCounts.whatsapp_automation },
+              { id: 'lead_automation', label: '⚡ Speed-to-Lead', count: serviceCounts.lead_automation },
+              { id: 'ai_agents', label: '🤖 Inquiry Assistant', count: serviceCounts.ai_agents },
+              { id: 'crm_workflow_automation', label: '🔄 CRM Sync', count: serviceCounts.crm_workflow_automation },
+              { id: 'business_automation', label: '⚙️ Business Ops', count: serviceCounts.business_automation },
+            ].map((svc) => {
+              const isSelected = selectedService === svc.id;
               return (
                 <button
-                  key={tab.id}
-                  onClick={() => setSelectedPlatform(tab.id as 'all' | Platform)}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-medium border transition-all cursor-pointer flex items-center gap-1.5 ${
+                  key={svc.id}
+                  onClick={() => setSelectedService(svc.id)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all cursor-pointer flex items-center gap-1.5 ${
                     isSelected
                       ? 'bg-[var(--color-soot)] text-white border-[var(--color-soot)] shadow-xs'
-                      : 'bg-[var(--color-paper)] text-[var(--color-warm-gray)] border-[var(--color-hairline)] hover:border-[var(--color-ink)] hover:text-[var(--color-ink)]'
+                      : 'bg-[var(--color-stone-100)] text-[var(--color-warm-gray)] border-[var(--color-hairline)] hover:border-[var(--color-ink)] hover:text-[var(--color-ink)]'
                   }`}
                 >
-                  {tab.icon && <span className="text-xs">{tab.icon}</span>}
-                  <span>{tab.label}</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                    isSelected ? 'bg-white/20 text-white' : 'bg-[var(--color-stone-100)] text-[var(--color-warm-gray)]'
+                  <span>{svc.label}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-medium ${
+                    isSelected ? 'bg-white/20 text-white' : 'bg-white text-[var(--color-warm-gray)]'
                   }`}>
-                    {tab.count}
+                    {svc.count}
                   </span>
                 </button>
               );
             })}
           </div>
 
-          <div className="flex items-center justify-between gap-3">
+          {/* Row 3: Search Input + Vertical Pills */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             {/* Search Input */}
-            <div className="relative flex-1 min-w-[280px]">
+            <div className="relative flex-1 min-w-[260px]">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-ash-gray)]" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search leads, authors, pain points, niches..."
+                placeholder="Search clinics, areas, phone, friction points..."
                 className="w-full pl-10 pr-10 py-2.5 bg-[var(--color-stone-100)] border border-[var(--color-hairline)] rounded-[var(--radius-inputs)] text-sm text-[var(--color-ink)] placeholder-[var(--color-ash-gray)] focus:outline-none focus:ring-2 focus:ring-[var(--color-cyan)] focus:border-[var(--color-cyan)] transition-all"
               />
               {searchQuery && (
@@ -1171,32 +1429,78 @@ export default function LeadCommandCenter() {
               )}
             </div>
 
-            {/* Channels Filter Pills */}
+            {/* Vertical Filter Pills */}
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-[11px] font-medium text-[var(--color-warm-gray)] uppercase tracking-[0.05em] mr-1">
-                Channels:
+                Vertical:
               </span>
-              {subreddits.map((sub) => {
-                const isActive = selectedSubreddit === sub;
+              {[
+                { id: 'all', label: 'All Verticals', count: verticalCounts.all },
+                { id: 'skin', label: '💉 Skin & Derma', count: verticalCounts.skin },
+                { id: 'dental', label: '🦷 Dental', count: verticalCounts.dental },
+                { id: 'hair', label: '💇 Hair Clinic', count: verticalCounts.hair },
+                { id: 'salon', label: '💆 Med Spa / Salon', count: verticalCounts.salon },
+              ].map((v) => {
+                const isActive = selectedVertical === v.id;
                 return (
                   <button
-                    key={sub}
-                    onClick={() => setSelectedSubreddit(sub)}
-                    className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer border ${
+                    key={v.id}
+                    onClick={() => setSelectedVertical(v.id)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer border flex items-center gap-1.5 ${
                       isActive
-                        ? 'bg-[var(--color-soot)] text-white border-[var(--color-soot)]'
+                        ? 'bg-[var(--color-soot)] text-white border-[var(--color-soot)] shadow-xs'
                         : 'bg-[var(--color-stone-100)] text-[var(--color-warm-gray)] border-[var(--color-hairline)] hover:border-[var(--color-ink)] hover:text-[var(--color-ink)]'
                     }`}
                   >
-                    {sub === 'all' ? 'All Channels' : sub}
+                    <span>{v.label}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-medium ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-white text-[var(--color-warm-gray)]'
+                    }`}>
+                      {v.count}
+                    </span>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* Status Filter Pills */}
-          <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-[var(--color-hairline)]">
+          {/* Row 3: Delhi NCR Region Filter Pills */}
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[var(--color-hairline)]">
+            <span className="text-[11px] font-medium text-[var(--color-warm-gray)] uppercase tracking-[0.05em] mr-1">
+              Area:
+            </span>
+            {[
+              { id: 'all', label: 'All Delhi NCR', count: regionCounts.all },
+              { id: 'south', label: 'South Delhi (GK, Safdarjung, Saket)', count: regionCounts.south },
+              { id: 'west', label: 'West Delhi (Rajouri, Janakpuri, Vikaspuri)', count: regionCounts.west },
+              { id: 'north_central', label: 'North & East (Rohini, Pitampura, Swasthya Vihar)', count: regionCounts.north_central },
+              { id: 'ncr_satellite', label: 'Gurgaon & Noida', count: regionCounts.ncr_satellite },
+            ].map((reg) => {
+              const isSelected = selectedRegion === reg.id;
+              return (
+                <button
+                  key={reg.id}
+                  onClick={() => setSelectedRegion(reg.id)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-all cursor-pointer flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-[var(--color-soot)] text-white border-[var(--color-soot)]'
+                      : 'bg-[var(--color-paper)] text-[var(--color-warm-gray)] border-[var(--color-hairline)] hover:border-[var(--color-ink)] hover:text-[var(--color-ink)]'
+                  }`}
+                >
+                  <MapPin className="w-3 h-3 text-emerald-600 shrink-0" />
+                  <span>{reg.label}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-medium ${
+                    isSelected ? 'bg-white/20 text-white' : 'bg-[var(--color-stone-100)] text-[var(--color-warm-gray)]'
+                  }`}>
+                    {reg.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Row 4: Status Filter Pills */}
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[var(--color-hairline)]">
             <span className="text-[11px] font-medium text-[var(--color-warm-gray)] uppercase tracking-[0.05em] mr-1">
               Status:
             </span>
@@ -1207,7 +1511,7 @@ export default function LeadCommandCenter() {
                 <button
                   key={st}
                   onClick={() => setSelectedStatus(st)}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-medium border transition-all cursor-pointer flex items-center gap-1.5 ${
+                  className={`px-3.5 py-1 rounded-full text-xs font-medium border transition-all cursor-pointer flex items-center gap-1.5 ${
                     isSelected
                       ? 'bg-[var(--color-soot)] text-white border-[var(--color-soot)]'
                       : 'bg-[var(--color-paper)] text-[var(--color-warm-gray)] border-[var(--color-hairline)] hover:border-[var(--color-ink)] hover:text-[var(--color-ink)]'
@@ -1235,10 +1539,10 @@ export default function LeadCommandCenter() {
           <div className="col-span-7 space-y-4">
             <div className="flex items-center justify-between px-1 flex-wrap gap-2">
               <span className="text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--color-warm-gray)]">
-                Lead Feed Stream ({filteredLeads.length})
+                Delhi NCR Deal Stream ({filteredLeads.length})
               </span>
               <span className="text-xs text-[var(--color-warm-gray)]">
-                Select row to inspect pitch & original thread
+                Click card to inspect scorecard &amp; 1-click WhatsApp outreach
               </span>
             </div>
 
@@ -1337,8 +1641,10 @@ export default function LeadCommandCenter() {
             )}
           </div>
         </section>
+      </>
+    )}
 
-      </div>
+  </div>
 
       {/* ────────────────── SLIDE-OVER PITCH DRAWER ────────────────── */}
       {isDrawerOpen && activeLead && (
@@ -1448,6 +1754,24 @@ export default function LeadCommandCenter() {
         onClose={() => setIsScraperOpen(false)}
         onLeadsIngested={handleLeadsIngested}
         onRefreshData={handleResetToIngested}
+        onOpenResearchCampaign={() => setIsResearchModalOpen(true)}
+        onOpenMissionControl={() => setIsMissionControlOpen(true)}
+      />
+
+      {/* Autonomous Research Campaign Modal */}
+      <ResearchCampaignModal
+        isOpen={isResearchModalOpen}
+        onClose={() => setIsResearchModalOpen(false)}
+        onRunCreated={() => {
+          setActiveView('research');
+        }}
+        onNotify={showToast}
+      />
+
+      {/* Real-Time AI Agent Mission Control & Thinking Stream Drawer */}
+      <AgentMissionControl
+        isOpen={isMissionControlOpen}
+        onClose={() => setIsMissionControlOpen(false)}
       />
     </div>
   );

@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  # Python AI Worker with OpenAI Agents SDK & Fast-Path Pipeline
+  ai-worker:
+    build:
+      context: ./ai-worker
+      dockerfile: Dockerfile
+    container_name: leadpulse-ai-worker
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - AI_WORKER_HOST=0.0.0.0
+      - AI_WORKER_PORT=8000
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./ai-worker/data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Next.js Lead Command Center Dashboard
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: leadpulse-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - AI_WORKER_URL=http://ai-worker:8000
+      - PORT=3000
+    depends_on:
+      ai-worker:
+        condition: service_healthy
+
+networks:
+  default:
+    name: leadpulse-network
