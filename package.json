@@ -8,7 +8,6 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "process-leads": "node scripts/process-reddit-csv.js",
     "test:provider": "python -m unittest tests/test_provider_compatibility.py",
     "test:worker": "python -m pytest ai-worker/tests -v",
     "test:phase2": "node scripts/test-phase2-integration.mjs",

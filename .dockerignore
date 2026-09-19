@@ -12,3 +12,4 @@ client/dist
 client/node_modules
 Dockerfile
 docker-compose.yml
+so 

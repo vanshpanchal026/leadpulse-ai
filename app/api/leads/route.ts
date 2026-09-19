@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { getLeadsAndStats } from '@/lib/lead-parser';
 import fs from 'fs';
 import path from 'path';
 
@@ -42,9 +41,12 @@ export async function GET() {
       }
     }
 
-    // 3. Fallback to parser dataset
-    const data = await getLeadsAndStats();
-    return NextResponse.json(data);
+    // 3. Fallback when no leads found
+    return NextResponse.json({
+      leads: [],
+      total: 0,
+      source: 'empty',
+    });
   } catch (error: any) {
     console.error('Error reading leads:', error);
     return NextResponse.json(
