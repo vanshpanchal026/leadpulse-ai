@@ -151,6 +151,10 @@ class PersistenceService:
         # Perform initial sync of existing Supabase leads to local mirror if needed
         self._seed_local_mirror_if_empty()
 
+        # Perform automatic background sync of local SQLite leads & runs to Supabase
+        if self.supabase:
+            self._sync_local_sqlite_to_supabase()
+
     def _get_connection(self) -> sqlite3.Connection:
         """Create a connection with row factory configured."""
         conn = sqlite3.connect(self.db_path, check_same_thread=False)
@@ -319,6 +323,77 @@ class PersistenceService:
 
         except Exception as exc:
             logger.warning("Could not seed local leads mirror from Supabase: %s", exc)
+
+    def _sync_local_sqlite_to_supabase(self) -> None:
+        """Automatically sync all local SQLite leads and research runs to Supabase in a background thread."""
+        if not self.supabase:
+            return
+
+        def _bg_sync():
+            try:
+                # 1. Sync all research runs
+                with self.lock, self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT * FROM research_runs")
+                    runs = [dict(r) for r in cursor.fetchall()]
+
+                for r in runs:
+                    for jf in ["errors", "configuration"]:
+                        val = r.get(jf)
+                        if isinstance(val, str) and val.strip():
+                            try:
+                                r[jf] = json.loads(val)
+                            except Exception:
+                                r[jf] = {}
+                    try:
+                        self.supabase.table("research_runs").upsert(r, on_conflict="run_id").execute()
+                    except Exception as e:
+                        logger.debug("Auto-sync research run note: %s", e)
+
+                # 2. Sync all leads
+                with self.lock, self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT * FROM leads")
+                    raw_leads = [dict(r) for r in cursor.fetchall()]
+
+                records_to_sync = []
+                jsonb_cols = [
+                    "audit_friction_points", "evidence", "research_sources",
+                    "specialist_results", "lead_analysis", "outreach_draft", "token_usage"
+                ]
+
+                for item in raw_leads:
+                    item["id"] = to_valid_uuid(item["id"])
+                    for col in jsonb_cols:
+                        val = item.get(col)
+                        if isinstance(val, str) and val.strip():
+                            try:
+                                item[col] = json.loads(val)
+                            except Exception:
+                                item[col] = None
+                        elif val is None or val == "":
+                            item[col] = None
+
+                    for num_col in ["rating", "opportunity_score", "confidence_score", "prospect_score"]:
+                        if item.get(num_col) is not None:
+                            try:
+                                item[num_col] = float(item[num_col])
+                            except Exception:
+                                item[num_col] = None
+                    records_to_sync.append(item)
+
+                for i in range(0, len(records_to_sync), 25):
+                    chunk = records_to_sync[i:i+25]
+                    try:
+                        self.supabase.table("leads").upsert(chunk, on_conflict="id").execute()
+                    except Exception as exc:
+                        logger.debug("Auto-sync leads batch error: %s", exc)
+
+                logger.info("Auto-sync completed: Verified %d local leads in Supabase.", len(records_to_sync))
+            except Exception as e:
+                logger.warning("Background SQLite to Supabase auto-sync notice: %s", e)
+
+        threading.Thread(target=_bg_sync, daemon=True).start()
 
     # =========================================================================
     # 1. RESEARCH RUN LIFECYCLE MANAGEMENT
@@ -957,14 +1032,18 @@ class PersistenceService:
             logger.debug("Successfully synced full V2 lead %s to Supabase.", lead.id)
         except Exception as exc:
             err_str = str(exc)
-            logger.debug("Supabase V2 sync notice (%s); attempting V1 schema fallback...", err_str)
+            logger.debug("Supabase V2 sync notice (%s); attempting on_conflict='id' fallback...", err_str)
             try:
-                # Fallback to V1 columns only
-                v1_payload = {k: v for k, v in payload.items() if k in V1_LEAD_COLUMNS}
-                self.supabase.table("leads").upsert(v1_payload, on_conflict="source_url").execute()
-                logger.debug("Successfully synced V1 fallback lead %s to Supabase.", lead.id)
-            except Exception as v1_exc:
-                logger.warning("Supabase V1 sync notice (data is safely persisted locally): %s", v1_exc)
+                self.supabase.table("leads").upsert(payload, on_conflict="id").execute()
+                logger.debug("Successfully synced lead %s on id to Supabase.", lead.id)
+            except Exception as id_exc:
+                try:
+                    # Fallback to V1 columns only
+                    v1_payload = {k: v for k, v in payload.items() if k in V1_LEAD_COLUMNS}
+                    self.supabase.table("leads").upsert(v1_payload, on_conflict="source_url").execute()
+                    logger.debug("Successfully synced V1 fallback lead %s to Supabase.", lead.id)
+                except Exception as v1_exc:
+                    logger.warning("Supabase V1 sync notice (data is safely persisted locally): %s", v1_exc)
 
     def _merge_evidence(
         self,
