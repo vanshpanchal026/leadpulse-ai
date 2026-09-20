@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from '@/components/navigation/sidebar';
 import { MobileNav } from '@/components/navigation/mobile-nav';
-import { ShieldCheck, Activity, Database } from 'lucide-react';
+import { ShieldCheck, Activity, Database, LogOut } from 'lucide-react';
 import { ConnectivityBanner } from '@/components/layout/connectivity-banner';
 import { AgentMissionControl, AgentSwarmStatusPill } from '@/components/agent/agent-mission-control';
 
@@ -11,6 +11,14 @@ export function AppShell() {
 
   const pillBase =
     'flex items-center gap-1.5 px-2 py-0.5 rounded-[4px] bg-secondary border border-border text-[11px]';
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/login', { method: 'DELETE' });
+    } finally {
+      window.location.href = '/login';
+    }
+  };
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground antialiased font-sans">
@@ -57,6 +65,16 @@ export function AppShell() {
               <ShieldCheck className="h-3.5 w-3.5 text-[hsl(var(--success))] shrink-0" />
               <span className="font-medium">Autonomous Send: Locked</span>
             </div>
+
+            {/* Lock / Sign Out */}
+            <button
+              onClick={handleLogout}
+              title="Lock Dashboard Session"
+              className="flex items-center gap-1.5 px-2 py-0.5 rounded-[4px] bg-secondary hover:bg-destructive/10 border border-border hover:border-destructive/30 text-muted-foreground hover:text-destructive text-[11px] transition-colors cursor-pointer"
+            >
+              <LogOut className="h-3 w-3 shrink-0" />
+              <span>Lock</span>
+            </button>
           </div>
         </header>
 

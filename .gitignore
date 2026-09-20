@@ -90,3 +90,5 @@ desktop.ini
 /playwright/.cache/
 /playwright/.auth/
 
+
+.vercel

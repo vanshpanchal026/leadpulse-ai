@@ -9,8 +9,9 @@ export async function middleware(request: NextRequest) {
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/static') ||
+    pathname.startsWith('/assets') ||
     pathname === '/favicon.ico' ||
-    pathname.match(/\.(png|jpg|jpeg|svg|webp|gif|ico|woff2?|css|js)$/)
+    pathname.match(/\.(png|jpg|jpeg|svg|webp|gif|ico|woff2?|css|js|map)$/)
   ) {
     return NextResponse.next();
   }
@@ -42,7 +43,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  // Allow authenticated API requests to reach Next.js API route handlers
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
+
+  // Rewrite all authenticated UI routes to the Port 3500 Vite client SPA
+  return NextResponse.rewrite(new URL('/index.html', request.url));
 }
 
 export const config = {
