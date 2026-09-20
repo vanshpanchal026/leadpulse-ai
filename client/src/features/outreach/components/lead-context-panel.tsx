@@ -17,7 +17,7 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { OutreachItem } from '../types';
-import { getOpportunityScoreColor } from '@/lib/utils';
+import { getOpportunityScoreColor, parseStructuredPoints } from '@/lib/utils';
 
 function InstagramIcon({ className }: { className?: string }) {
   return (
@@ -115,12 +115,42 @@ export function LeadContextPanel({ item }: LeadContextPanelProps) {
           </div>
 
           {/* Strategic Rationale */}
-          {item.whyThisService && (
-            <div className="p-2.5 rounded-md bg-black/20 border border-border/40 text-muted-foreground leading-relaxed">
-              <span className="text-foreground font-semibold">Strategic Rationale: </span>
-              {item.whyThisService}
-            </div>
-          )}
+          {item.whyThisService && (() => {
+            const whyPoints = parseStructuredPoints(item.whyThisService);
+            return (
+              <div className="p-3 rounded-md bg-black/20 border border-border/40 text-muted-foreground leading-relaxed space-y-2">
+                <div className="text-foreground font-semibold text-xs flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-[hsl(var(--success-fg))]" />
+                  <span>Strategic Rationale (Why This Service)</span>
+                </div>
+                {whyPoints.length > 1 || (whyPoints.length === 1 && (whyPoints[0].number || whyPoints[0].label)) ? (
+                  <ul className="space-y-2 pt-0.5">
+                    {whyPoints.map((point, index) => (
+                      <li key={index} className="flex items-start gap-2 text-xs leading-relaxed">
+                        <span className="shrink-0 flex items-center justify-center h-4 w-4 rounded-full bg-[hsl(var(--success-bg))] text-[hsl(var(--success-fg))] border border-[hsl(var(--success-border))] font-mono text-[10px] font-bold mt-0.5">
+                          {point.number || index + 1}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          {point.label && (
+                            <span className="font-semibold text-foreground mr-1.5">
+                              {point.label}
+                            </span>
+                          )}
+                          <span className="text-foreground/90 font-normal">
+                            {point.text}
+                          </span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-foreground/90 font-medium">
+                    {item.whyThisService}
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Value Hypothesis & Pitch Angle if provided */}
           {(item.pitchAngle || item.valueHypothesis) && (

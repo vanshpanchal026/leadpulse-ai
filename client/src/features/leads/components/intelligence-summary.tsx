@@ -11,6 +11,7 @@ import {
   Send,
   CheckCircle2,
 } from 'lucide-react';
+import { parseStructuredPoints } from '@/lib/utils';
 
 interface IntelligenceSummaryProps {
   lead: NormalizedLead;
@@ -20,6 +21,10 @@ export function IntelligenceSummary({ lead }: IntelligenceSummaryProps) {
   const primaryProblem = lead.primaryProblem?.trim() || 'Unknown';
   const recommendedService = lead.recommendedService?.trim() || 'Unknown';
   const whyThisService = lead.whyThisService?.trim() || 'Unknown';
+
+  const primaryProblemPoints = parseStructuredPoints(primaryProblem);
+  const whyThisServicePoints = parseStructuredPoints(whyThisService);
+
 
   const getPriorityBadge = () => {
     switch (lead.researchPriority) {
@@ -68,15 +73,40 @@ export function IntelligenceSummary({ lead }: IntelligenceSummaryProps) {
             <AlertCircle className="h-3.5 w-3.5 text-[hsl(var(--warning-fg))]" />
             <span>Primary Problem</span>
           </div>
-          <p
-            className={`text-xs leading-relaxed ${
-              primaryProblem === 'Unknown'
-                ? 'text-muted-foreground italic'
-                : 'text-foreground font-medium'
-            }`}
-          >
-            {primaryProblem}
-          </p>
+          {primaryProblem === 'Unknown' || primaryProblemPoints.length <= 1 ? (
+            <p
+              className={`text-xs leading-relaxed ${
+                primaryProblem === 'Unknown'
+                  ? 'text-muted-foreground italic'
+                  : 'text-foreground font-medium'
+              }`}
+            >
+              {primaryProblem}
+            </p>
+          ) : (
+            <ul className="space-y-1.5 pt-0.5">
+              {primaryProblemPoints.map((point, index) => (
+                <li
+                  key={index}
+                  className="flex items-start gap-2 text-xs leading-relaxed"
+                >
+                  <span className="shrink-0 flex items-center justify-center h-4 w-4 rounded-full bg-[hsl(var(--warning-bg))] text-[hsl(var(--warning-fg))] border border-[hsl(var(--warning-border))] font-mono text-[10px] font-bold mt-0.5">
+                    {point.number || index + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    {point.label && (
+                      <span className="font-semibold text-foreground mr-1.5">
+                        {point.label}
+                      </span>
+                    )}
+                    <span className="text-foreground font-medium">
+                      {point.text}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         {/* Recommended Service */}
@@ -99,20 +129,43 @@ export function IntelligenceSummary({ lead }: IntelligenceSummaryProps) {
         </div>
 
         {/* Why This Service */}
-        <div className="p-3.5 rounded-md border border-border/70 bg-card/60 space-y-2">
+        <div className="p-3.5 rounded-md border border-border/70 bg-card/60 space-y-2.5">
           <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
             <CheckCircle2 className="h-3.5 w-3.5 text-[hsl(var(--success-fg))]" />
             <span>Why This Service</span>
           </div>
-          <p
-            className={`text-xs leading-relaxed ${
-              whyThisService === 'Unknown'
-                ? 'text-muted-foreground italic'
-                : 'text-foreground font-medium'
-            }`}
-          >
-            {whyThisService}
-          </p>
+          {whyThisService === 'Unknown' || whyThisServicePoints.length === 0 ? (
+            <p className="text-xs leading-relaxed text-muted-foreground italic">
+              {whyThisService}
+            </p>
+          ) : whyThisServicePoints.length === 1 && !whyThisServicePoints[0].number && !whyThisServicePoints[0].label ? (
+            <p className="text-xs leading-relaxed text-foreground font-medium">
+              {whyThisService}
+            </p>
+          ) : (
+            <ul className="space-y-2 pt-0.5">
+              {whyThisServicePoints.map((point, index) => (
+                <li
+                  key={index}
+                  className="flex items-start gap-2 text-xs leading-relaxed"
+                >
+                  <span className="shrink-0 flex items-center justify-center h-4 w-4 rounded-full bg-[hsl(var(--success-bg))] text-[hsl(var(--success-fg))] border border-[hsl(var(--success-border))] font-mono text-[10px] font-bold mt-0.5">
+                    {point.number || index + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    {point.label && (
+                      <span className="font-semibold text-foreground mr-1.5">
+                        {point.label}
+                      </span>
+                    )}
+                    <span className="text-foreground/90 font-normal">
+                      {point.text}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </CardContent>
     </Card>

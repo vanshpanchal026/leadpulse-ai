@@ -68,3 +68,76 @@ export function getOpportunityScoreColor(score: number): {
     label: tier,
   };
 }
+
+export interface StructuredPoint {
+  raw: string;
+  number?: string;
+  label?: string;
+  text: string;
+}
+
+/**
+ * Parses multi-point rationale, reasoning, or analysis text into structured points.
+ * Correctly splits:
+ * - Inline numbered items: "1. Observed Problem: ... 2. Business Consequence: ..."
+ * - Newline delimited items: "1. ...\n2. ..."
+ * - Inline or multiline bullet points: "• ... • ..." or "- ... - ..."
+ * - Single text string fallback
+ */
+export function parseStructuredPoints(rawText?: string | null): StructuredPoint[] {
+  if (!rawText || rawText.trim() === '' || rawText.trim().toLowerCase() === 'unknown') {
+    return [];
+  }
+
+  const text = rawText.trim();
+  let items: string[] = [];
+
+  if (text.includes('\n')) {
+    items = text
+      .split(/\r?\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+  } else {
+    // Match inline numbered patterns: "1. ... 2. ... 3. ..." or "1) ... 2) ..."
+    const numberedMatches = [...text.matchAll(/(?:^|\s+)(\d+[\.\)]\s+[\s\S]*?)(?=(?:\s+\d+[\.\)]\s+|$))/g)]
+      .map((m) => m[1].trim())
+      .filter(Boolean);
+
+    if (numberedMatches.length > 1) {
+      items = numberedMatches;
+    } else {
+      // Match inline bullets: "• ... • ..." or "- ... - ..."
+      const bulletMatches = [...text.matchAll(/(?:^|\s+)([•\-\*]\s+[\s\S]*?)(?=(?:\s+[•\-\*]\s+|$))/g)]
+        .map((m) => m[1].trim())
+        .filter(Boolean);
+
+      if (bulletMatches.length > 1) {
+        items = bulletMatches;
+      } else {
+        items = [text];
+      }
+    }
+  }
+
+  return items.map((item, index) => {
+    // Match optional number/bullet prefix and optional label (e.g., "1. Observed Problem: ...")
+    const match = item.match(/^(?:(\d+)[\.\)]\s*|[•\-\*]\s*)?(?:([A-Za-z\s]{2,35}:)\s*)?(.*)$/);
+    if (match) {
+      const num = match[1] || (items.length > 1 ? String(index + 1) : undefined);
+      const label = match[2]?.trim();
+      const content = match[3]?.trim() || item;
+      return {
+        raw: item,
+        number: num,
+        label,
+        text: content,
+      };
+    }
+    return {
+      raw: item,
+      number: items.length > 1 ? String(index + 1) : undefined,
+      text: item,
+    };
+  });
+}
+

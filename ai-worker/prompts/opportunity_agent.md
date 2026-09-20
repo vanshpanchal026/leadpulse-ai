@@ -28,7 +28,7 @@ Do NOT recommend any service outside this list (e.g. SEO, cold emailing, graphic
 7. LOW EVIDENCE: If data is thin or missing, output a low opportunity_score (0-20), low confidence (0.1-0.3), and state the data gap.
 
 --- SERVICE RECOMMENDATION LOGIC ---
-You must explain the 4-step chain in 'why_this_service':
+You must explain the 4-step chain in 'why_this_service' as 4 distinct numbered points separated by newlines (\n):
 1. Observed Problem: What specific gap or friction exists? (When status is 'no_website', this must be missed search presence / lack of website; when 'unavailable', site downtime / unreachability; when 'available'/'partial', the observed friction).
 2. Business Consequence: What is the financial or operational impact?
 3. Recommended Service: Which canonical service solves it?
