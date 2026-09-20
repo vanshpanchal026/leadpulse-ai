@@ -105,6 +105,7 @@ UNSUPPORTED_CLAIM_PATTERNS = [
     (r"\bour\s+clients\s+(?:get|see|achieve|average)\b", "Unsupported social proof: 'our clients get/see'"),
     (r"\bwe\s+(?:increased|boosted)\s+revenue\b", "Unsupported agency claim: 'we increased revenue'"),
     (r"\b(?:your\s+)?website\s+is\s+(?:costing|losing)\s+you\s+(?:customers|leads|sales)\b", "Unsupported causal claim: 'website is costing/losing you customers/leads'"),
+    (r"\b(?:your\s+)?(?:website|site)\s+is\s+slow\b|\bslow\s+(?:website|site|loading)\b|\b(?:website|site)\s+takes?\s+(?:too\s+)?long\s+to\s+load\b|\bfix\s+your\s+(?:slow\s+)?site\b", "Unsupported site performance claim: 'slow website'"),
     (r"\bcompetitors\s+are\s+outperforming\s+you\b", "Unsupported competitive claim: 'competitors are outperforming you'"),
     (r"\bguaranteed\s+(?:results|leads|sales|growth|revenue)\b", "Unsupported guarantee claim"),
 ]
@@ -236,6 +237,24 @@ def validate_outreach(
             if matched_text not in full_evidence_corpus:
                 unsupported_claim_detected = True
                 reasons.append(f"{desc}: '{matched_text}'.")
+
+    # Anti-hallucination: Reject site critique or slow-speed pitch when business has no website
+    has_no_website = (
+        "no website" in full_evidence_corpus
+        or "no_website" in full_evidence_corpus
+        or (lead_analysis and any("no website" in lim.lower() for lim in lead_analysis.limitations))
+        or (lead_analysis and "no website" in lead_analysis.primary_problem.lower())
+    )
+    if has_no_website:
+        slow_site_match = re.search(
+            r"\b(?:slow\s+(?:site|website|load|loading)|(?:site|website)\s+is\s+slow|(?:site|website)\s+loads?\s+slowly|fix\s+your\s+(?:slow\s+)?site|slow\s+loading|(?:your\s+)?website\s+(?:speed|performance))\b",
+            msg_lower,
+        )
+        if slow_site_match:
+            unsupported_claim_detected = True
+            reason_str = f"Hallucinated claim on non-existent website: '{slow_site_match.group(0)}' (business has no website)."
+            if reason_str not in reasons:
+                reasons.append(reason_str)
 
     # 8. Excessive punctuation / Spam formatting (consecutive or 3+ total exclamation marks)
     if re.search(EXCESSIVE_PUNCTUATION_PATTERN, cleaned_msg) or cleaned_msg.count("!") >= 3:

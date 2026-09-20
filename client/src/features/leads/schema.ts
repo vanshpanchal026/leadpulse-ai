@@ -89,6 +89,8 @@ export function normalizeLead(raw: RawLeadRecord): NormalizedLead {
   let score = 0;
   if (typeof raw.opportunity_score === 'number' && raw.opportunity_score > 0) {
     score = Math.round(raw.opportunity_score);
+  } else if ((raw as any).lead_analysis?.opportunity_score) {
+    score = Math.round((raw as any).lead_analysis.opportunity_score);
   } else if (typeof raw.prospect_score === 'number' && raw.prospect_score > 0) {
     score = Math.min(100, Math.round(raw.prospect_score * 10));
   }
@@ -150,7 +152,9 @@ export function normalizeLead(raw: RawLeadRecord): NormalizedLead {
   // Normalize research status safely
   const statusStr = String(raw.research_status || '').toLowerCase();
   const validStatus: ResearchStatus =
-    statusStr === 'complete' || statusStr === 'partial' || statusStr === 'pending' || statusStr === 'failed'
+    statusStr === 'complete' || statusStr === 'completed'
+      ? 'complete'
+      : statusStr === 'partial' || statusStr === 'pending' || statusStr === 'failed'
       ? statusStr
       : 'pending';
 

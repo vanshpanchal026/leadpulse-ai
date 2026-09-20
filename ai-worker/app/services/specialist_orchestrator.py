@@ -50,7 +50,10 @@ from app.services.website_fetcher import (
     WebsiteFetchResult,
 )
 from app.agents.specialists.triage_agent import triage_candidate_deterministic
-from app.agents.specialists.website_agent import build_unavailable_website_result
+from app.agents.specialists.website_agent import (
+    build_no_website_result,
+    build_unavailable_website_result,
+)
 from app.agents.specialists.ads_agent import build_no_ads_result, build_unavailable_ads_result
 from app.agents.specialists.maps_agent import build_unavailable_maps_result
 from app.tools.apify.budget import CampaignBudgetTracker
@@ -132,7 +135,7 @@ class SpecialistOrchestratorService:
             prompt=prompt,
             agent_type="lead_triage",
             context=context_payload,
-            timeout_seconds=60.0,
+            timeout_seconds=None,
         )
 
         resp = await self.runner.execute(req)
@@ -171,7 +174,7 @@ class SpecialistOrchestratorService:
         """Execute controlled website fetch and Website Specialist Agent."""
         status_label = "success"
         if not candidate.website_url:
-            return build_unavailable_website_result(None, "No website URL provided in candidate data"), None, "no_url"
+            return build_no_website_result("No website URL provided in candidate data"), None, "no_url"
 
         # 1. Controlled HTTP fetch with SSRF guardrails
         fetch_res: WebsiteFetchResult = await self.fetcher.fetch(candidate.website_url)
@@ -210,7 +213,7 @@ class SpecialistOrchestratorService:
         req = AgentRunRequest(
             prompt=prompt,
             agent_type="website_specialist",
-            timeout_seconds=60.0,
+            timeout_seconds=None,
         )
 
         try:
@@ -272,7 +275,7 @@ class SpecialistOrchestratorService:
         req = AgentRunRequest(
             prompt=prompt,
             agent_type="ads_specialist",
-            timeout_seconds=60.0,
+            timeout_seconds=None,
         )
 
         try:
@@ -335,7 +338,7 @@ class SpecialistOrchestratorService:
         req = AgentRunRequest(
             prompt=prompt,
             agent_type="maps_specialist",
-            timeout_seconds=60.0,
+            timeout_seconds=None,
         )
 
         try:

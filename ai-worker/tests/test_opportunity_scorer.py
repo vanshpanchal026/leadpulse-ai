@@ -263,3 +263,42 @@ class TestOpportunityScorer:
         assert breakdown.opportunity_score <= 100.0
         assert breakdown.opportunity_score == 100.0
 
+    def test_pitch_angle_distinguishes_no_website_from_unavailable(self):
+        # 1. Candidate with no website at all (no_website)
+        cand_no_web = _make_candidate(website_url=None, scorecard_score=7)
+        agg_no_web = SpecialistResearchAggregate(
+            business_name=cand_no_web.business_name,
+            triage_result=LeadTriageResult(qualified=True, priority="high", reason="High ticket", research_agents=["website", "ads"]),
+            website_analysis=WebsiteAnalysisResult(
+                status="no_website",
+                findings=["No website exists"],
+                confidence=0.1,
+                limitations=["No website available"],
+            ),
+            ads_analysis=AdsAnalysisResult(status="no_ads", active_ad_count=0, confidence=0.8),
+            execution_status={"website": "no_url", "ads": "success"}
+        )
+        score_no_web = calculate_opportunity_score(cand_no_web, agg_no_web)
+        assert score_no_web.recommended_service == "website_development"
+        assert "lacks a website" in score_no_web.primary_problem.lower() or "search" in score_no_web.primary_problem.lower()
+        assert "search" in score_no_web.why_this_service.lower() or "discoverability" in score_no_web.why_this_service.lower()
+
+        # 2. Candidate with existing website that failed to fetch (unavailable)
+        cand_unavail = _make_candidate(website_url="https://broken-site-123.com", scorecard_score=7)
+        agg_unavail = SpecialistResearchAggregate(
+            business_name=cand_unavail.business_name,
+            triage_result=LeadTriageResult(qualified=True, priority="high", reason="High ticket", research_agents=["website", "ads"]),
+            website_analysis=WebsiteAnalysisResult(
+                status="unavailable",
+                findings=["Site could not be reached"],
+                confidence=0.1,
+                limitations=["Connection timed out"],
+            ),
+            ads_analysis=AdsAnalysisResult(status="no_ads", active_ad_count=0, confidence=0.8),
+            execution_status={"website": "fetch_failed", "ads": "success"}
+        )
+        score_unavail = calculate_opportunity_score(cand_unavail, agg_unavail)
+        assert score_unavail.recommended_service == "website_development"
+        assert "unreachable" in score_unavail.primary_problem.lower() or "failing to load" in score_unavail.primary_problem.lower()
+        assert "downtime" in score_unavail.why_this_service.lower() or "reliable" in score_unavail.why_this_service.lower()
+

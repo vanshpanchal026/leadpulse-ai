@@ -17,7 +17,7 @@ from app.schemas.opportunity import OpportunityResult, normalize_service_name
 from app.schemas.outreach import OutreachRecord
 
 ResearchRunStatus = Literal["pending", "running", "completed", "partial", "failed", "cancelled"]
-LeadResearchStatus = Literal["pending", "running", "complete", "partial", "failed"]
+LeadResearchStatus = Literal["pending", "running", "complete", "completed", "partial", "failed"]
 LeadResearchPriority = Literal["immediate", "high", "medium", "low", "skip"]
 LeadOutreachStatus = Literal["draft", "validated", "awaiting_human_approval", "approved", "rejected"]
 

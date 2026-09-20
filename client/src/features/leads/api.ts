@@ -2,17 +2,48 @@ import { useQuery } from '@tanstack/react-query';
 import { LeadsApiResponseSchema, normalizeLead } from './schema';
 import { NormalizedLead, LeadReportResponse } from './types';
 
-export async function fetchLeads(): Promise<NormalizedLead[]> {
-  const response = await fetch('/api/leads', {
-    headers: {
-      Accept: 'application/json',
-    },
-  });
+export interface FetchLeadsParams {
+  research_run_id?: string;
+  status?: string;
+  research_status?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function fetchLeads(params?: FetchLeadsParams): Promise<NormalizedLead[]> {
+  const queryParams = new URLSearchParams();
+  if (params?.research_run_id && params.research_run_id !== 'all') {
+    queryParams.set('research_run_id', params.research_run_id);
+  }
+  if (params?.status && params.status !== 'all') {
+    queryParams.set('status', params.status);
+  }
+  if (params?.research_status && params.research_status !== 'all') {
+    queryParams.set('research_status', params.research_status);
+  }
+  if (params?.limit) {
+    queryParams.set('limit', String(params.limit));
+  }
+  if (params?.offset) {
+    queryParams.set('offset', String(params.offset));
+  }
+  const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+
+  // Direct fetch from Python AI Worker with fallback to Next.js BFF
+  let response = await fetch(`/api/v1/leads${queryString}`, {
+    headers: { Accept: 'application/json' },
+  }).catch(() => null);
+
+  if (!response || !response.ok) {
+    response = await fetch(`/api/leads${queryString}`, {
+      headers: { Accept: 'application/json' },
+    });
+  }
 
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(
-      `Failed to fetch leads from /api/leads: ${response.status} ${errorText}`
+      `Failed to fetch leads: ${response.status} ${errorText}`
     );
   }
 
@@ -40,13 +71,22 @@ export async function fetchLeads(): Promise<NormalizedLead[]> {
     }
   }
 
-  return rawList.map(normalizeLead);
+  return rawList
+    .map(normalizeLead)
+    .filter((lead) => {
+      const name = lead.name || '';
+      const id = lead.id || '';
+      if (id.startsWith('lead_live_test_') || id.startsWith('test_')) return false;
+      if (name.startsWith('Test Clinic')) return false;
+      if (['Metro Aesthetics & Smile Studio', 'Apex Dental Spa', 'Aura Dental Lounge'].includes(name)) return false;
+      return true;
+    });
 }
 
-export function useLeadsQuery() {
+export function useLeadsQuery(params?: FetchLeadsParams) {
   return useQuery({
-    queryKey: ['leads'],
-    queryFn: fetchLeads,
+    queryKey: ['leads', params],
+    queryFn: () => fetchLeads(params),
     staleTime: 1000 * 30,
     refetchOnWindowFocus: false,
   });

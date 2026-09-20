@@ -153,7 +153,7 @@ class OutreachOrchestratorService:
         req = AgentRunRequest(
             prompt=prompt,
             agent_type="outreach",
-            timeout_seconds=60.0,
+            timeout_seconds=None,
         )
 
         try:
@@ -217,7 +217,7 @@ class OutreachOrchestratorService:
             regen_req = AgentRunRequest(
                 prompt=regen_prompt,
                 agent_type="outreach",
-                timeout_seconds=60.0,
+                timeout_seconds=None,
             )
 
             try:

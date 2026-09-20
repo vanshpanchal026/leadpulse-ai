@@ -87,7 +87,7 @@ class OpportunityOrchestratorService:
         specialist_aggregate: Optional[SpecialistResearchAggregate] = None,
         campaign_scope: Optional[CampaignScope] = None,
         limits: Optional[CampaignLimits] = None,
-        timeout_seconds: float = 120.0,
+        timeout_seconds: Optional[float] = None,
     ) -> OpportunityPipelineResult:
         """Execute the complete Phase 6 synthesis pipeline for a candidate."""
         start_time = time.perf_counter()
@@ -246,7 +246,7 @@ class OpportunityOrchestratorService:
             opp_req = AgentRunRequest(
                 prompt=opportunity_prompt,
                 agent_type="opportunity",
-                timeout_seconds=min(timeout_seconds, 120.0),
+                timeout_seconds=timeout_seconds,
             )
             opp_resp = await self.runner.execute(opp_req)
             if opp_resp.token_usage:
@@ -346,7 +346,7 @@ class OpportunityOrchestratorService:
             analyst_req = AgentRunRequest(
                 prompt=lead_analyst_prompt,
                 agent_type="lead_analyst",
-                timeout_seconds=min(timeout_seconds, 120.0),
+                timeout_seconds=timeout_seconds,
             )
             analyst_resp = await self.runner.execute(analyst_req)
             if analyst_resp.token_usage:

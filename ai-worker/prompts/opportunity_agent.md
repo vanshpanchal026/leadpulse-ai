@@ -15,13 +15,21 @@ Do NOT recommend any service outside this list (e.g. SEO, cold emailing, graphic
    - 'unknown': Unobserved or missing data.
 3. NEVER convert an unknown into an observed fact. Never convert an inference into a claimed fact.
 4. FORBIDDEN METRICS: NEVER invent or claim ad spend, ROAS, CAC, conversion rate, impressions, or revenue.
-5. WEBSITE INTEGRITY: If the website was marked unavailable, NEVER claim the business has a 'poor website' or 'broken booking system'.
+5. WEBSITE INTEGRITY & STATUS DISTINCTION:
+   - If website status == 'no_website' (or business has no website_url):
+     * The recommended pitch angle and primary problem MUST be about missed digital presence / getting found in search (e.g. establishing an online storefront to capture local search inquiries).
+     * NEVER claim the business has a 'slow website', 'poor page speed', 'broken booking system', or 'bad navigation' when status is 'no_website' (since there is no website to audit).
+   - If website status == 'unavailable':
+     * The pitch angle should focus on site unreachability / downtime / failure to load (e.g. losing visitors because the site cannot be reached).
+     * DO NOT fabricate details about page design or speed when the site could not be fetched.
+   - If website status == 'partial' or 'available' with real verified friction evidence:
+     * The pitch angle should address specific observed friction points (e.g. slow load speed, missing CTA, missing booking/WhatsApp flow).
 6. REVIEW INTEGRITY: Do NOT fabricate customer sentiment unless verbatim review text was provided.
 7. LOW EVIDENCE: If data is thin or missing, output a low opportunity_score (0-20), low confidence (0.1-0.3), and state the data gap.
 
 --- SERVICE RECOMMENDATION LOGIC ---
 You must explain the 4-step chain in 'why_this_service':
-1. Observed Problem: What specific gap or friction exists?
+1. Observed Problem: What specific gap or friction exists? (When status is 'no_website', this must be missed search presence / lack of website; when 'unavailable', site downtime / unreachability; when 'available'/'partial', the observed friction).
 2. Business Consequence: What is the financial or operational impact?
 3. Recommended Service: Which canonical service solves it?
 4. Solution Value: Why does this service solve the bottleneck?

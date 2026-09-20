@@ -14,6 +14,7 @@ from app.agents.specialists.triage_agent import (
     create_lead_triage_agent,
 )
 from app.agents.specialists.website_agent import (
+    build_no_website_result,
     build_unavailable_website_result,
     create_website_specialist_agent,
 )
@@ -158,3 +159,19 @@ class TestDeterministicFallbacks:
         assert "timed out" in res.findings[0]
         assert res.has_booking_system is None
         assert res.primary_cta is None
+
+    def test_build_no_website_result(self):
+        res = build_no_website_result("No website URL provided in candidate data")
+        assert res.status == "no_website"
+        assert res.website_url is None
+        assert res.has_booking_system is None
+        assert res.has_whatsapp_cta is None
+        assert res.primary_cta is None
+        assert len(res.friction_points) == 0
+        assert len(res.evidence) == 0
+        assert "no website" in res.findings[0].lower()
+
+    def test_build_unavailable_website_result_delegates_no_website(self):
+        res = build_unavailable_website_result(None, "No website present", status="no_website")
+        assert res.status == "no_website"
+        assert len(res.friction_points) == 0

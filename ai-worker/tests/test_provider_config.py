@@ -36,7 +36,7 @@ def test_provider_config_loading_success(test_settings):
     assert config.api_mode == "chat_completions"
     assert config.use_responses is False
     assert config.tracing_disabled is True
-    assert config.timeout_seconds == 60.0
+    assert config.timeout_seconds == test_settings.AI_TIMEOUT_SECONDS
     assert config.max_retries == 2
 
 

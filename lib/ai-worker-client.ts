@@ -101,7 +101,7 @@ export async function runAgentTask<T = unknown>(
   options: RunAgentOptions
 ): Promise<AgentRunResult<T>> {
   const baseUrl = getWorkerBaseUrl();
-  const timeoutSeconds = options.timeout_seconds || 60;
+  const timeoutSeconds = options.timeout_seconds || 180;
   // Network timeout includes 10-second buffer over agent execution timeout
   const timeoutMs = (timeoutSeconds + 10) * 1000;
 

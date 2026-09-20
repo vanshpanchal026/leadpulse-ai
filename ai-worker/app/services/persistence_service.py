@@ -576,6 +576,25 @@ class PersistenceService:
                 return None
             return self._row_to_run_record(row)
 
+    def delete_research_run(self, run_id: str) -> bool:
+        """Delete a research run by its run_id from SQLite and Supabase."""
+        deleted = False
+        with self.lock, self._get_connection() as conn:
+            cursor = conn.cursor()
+            # Unlink any leads referencing this run
+            cursor.execute("UPDATE leads SET research_run_id = NULL WHERE research_run_id = ?", (run_id,))
+            cursor.execute("DELETE FROM research_runs WHERE run_id = ?", (run_id,))
+            conn.commit()
+            deleted = cursor.rowcount > 0
+
+        if self.supabase:
+            try:
+                self.supabase.table("research_runs").delete().eq("run_id", run_id).execute()
+            except Exception as exc:
+                logger.debug("Supabase delete_research_run notice: %s", exc)
+
+        return deleted
+
     def list_research_runs(
         self,
         status: Optional[str] = None,
@@ -759,10 +778,15 @@ class PersistenceService:
                 research_status = lead_data.get("research_status") or existing["research_status"] or "pending"
                 research_priority = lead_data.get("research_priority") or existing["research_priority"] or "medium"
                 opp_score = float(lead_data["opportunity_score"]) if lead_data.get("opportunity_score") is not None else float(existing["opportunity_score"] or 0.0)
+                if opp_score <= 0.0 and merged_analysis.get("opportunity_score") is not None:
+                    try:
+                        opp_score = float(merged_analysis["opportunity_score"])
+                    except (ValueError, TypeError):
+                        pass
                 conf_score = float(lead_data["confidence_score"]) if lead_data.get("confidence_score") is not None else float(existing["confidence_score"] or 0.0)
-                rec_service = lead_data.get("recommended_service") or existing["recommended_service"]
-                primary_prob = lead_data.get("primary_problem") or existing["primary_problem"]
-                why_service = lead_data.get("why_this_service") or existing["why_this_service"]
+                rec_service = lead_data.get("recommended_service") or existing["recommended_service"] or merged_analysis.get("recommended_service")
+                primary_prob = lead_data.get("primary_problem") or existing["primary_problem"] or merged_analysis.get("primary_problem")
+                why_service = lead_data.get("why_this_service") or existing["why_this_service"] or merged_analysis.get("why_this_service")
                 outreach_status = lead_data.get("outreach_status") or existing["outreach_status"] or "draft"
                 agent_ver = lead_data.get("agent_version") or existing["agent_version"] or "2.0.0"
                 prompt_ver = lead_data.get("prompt_version") or existing["prompt_version"] or "2.0.0"
@@ -832,17 +856,22 @@ class PersistenceService:
                 audit_friction = lead_data.get("audit_friction_points") or []
                 direct_channel = lead_data.get("direct_contact_channel") or "whatsapp"
 
+                lead_analysis = lead_data.get("lead_analysis") or {}
                 research_status = lead_data.get("research_status") or "pending"
                 research_priority = lead_data.get("research_priority") or "medium"
                 opp_score = float(lead_data["opportunity_score"]) if lead_data.get("opportunity_score") is not None else 0.0
+                if opp_score <= 0.0 and lead_analysis.get("opportunity_score") is not None:
+                    try:
+                        opp_score = float(lead_analysis["opportunity_score"])
+                    except (ValueError, TypeError):
+                        pass
                 conf_score = float(lead_data["confidence_score"]) if lead_data.get("confidence_score") is not None else 0.0
-                rec_service = lead_data.get("recommended_service")
-                primary_prob = lead_data.get("primary_problem")
-                why_service = lead_data.get("why_this_service")
+                rec_service = lead_data.get("recommended_service") or lead_analysis.get("recommended_service")
+                primary_prob = lead_data.get("primary_problem") or lead_analysis.get("primary_problem")
+                why_service = lead_data.get("why_this_service") or lead_analysis.get("why_this_service")
                 evidence = self._validate_evidence_list(lead_data.get("evidence") or [])
                 research_sources = lead_data.get("research_sources") or []
                 specialist_results = lead_data.get("specialist_results") or {}
-                lead_analysis = lead_data.get("lead_analysis") or {}
                 outreach_draft = lead_data.get("outreach_draft") or {}
                 outreach_status = lead_data.get("outreach_status") or "draft"
                 agent_ver = lead_data.get("agent_version") or "2.0.0"
@@ -1212,17 +1241,17 @@ class PersistenceService:
             count_query += " AND research_status = ?"
             params.append(research_status)
 
-        if research_run_id:
+        if research_run_id and research_run_id.lower() != "all":
             query += " AND research_run_id = ?"
             count_query += " AND research_run_id = ?"
-            params.append(research_run_id)
+            params.append(research_run_id.strip())
 
         with self.lock, self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(count_query, params)
             total = cursor.fetchone()[0]
 
-            query += " ORDER BY opportunity_score DESC, prospect_score DESC LIMIT ? OFFSET ?"
+            query += " ORDER BY created_at DESC, opportunity_score DESC LIMIT ? OFFSET ?"
             cursor.execute(query, params + [limit, offset])
             rows = cursor.fetchall()
             items = [self._row_to_lead_record(r) for r in rows]
@@ -1259,12 +1288,12 @@ class PersistenceService:
             prospect_score=row["prospect_score"] or 0,
             audit_friction_points=json.loads(row["audit_friction_points"] or "[]"),
             direct_contact_channel=row["direct_contact_channel"] or "whatsapp",
-            research_status=row["research_status"] or "pending",
+            research_status="complete" if (row["research_status"] in ("pending", "partial", "complete", "completed", None) and json.loads(row["lead_analysis"] or "{}").get("opportunity_score") is not None) else ("complete" if row["research_status"] == "completed" else (row["research_status"] or "pending")),
             research_priority=row["research_priority"] or "medium",
-            opportunity_score=row["opportunity_score"] or 0.0,
-            recommended_service=row["recommended_service"],
-            primary_problem=row["primary_problem"],
-            why_this_service=row["why_this_service"],
+            opportunity_score=row["opportunity_score"] or float(json.loads(row["lead_analysis"] or "{}").get("opportunity_score") or 0.0),
+            recommended_service=row["recommended_service"] or json.loads(row["lead_analysis"] or "{}").get("recommended_service"),
+            primary_problem=row["primary_problem"] or json.loads(row["lead_analysis"] or "{}").get("primary_problem"),
+            why_this_service=row["why_this_service"] or json.loads(row["lead_analysis"] or "{}").get("why_this_service"),
             evidence=json.loads(row["evidence"] or "[]"),
             research_sources=json.loads(row["research_sources"] or "[]"),
             specialist_results=json.loads(row["specialist_results"] or "{}"),

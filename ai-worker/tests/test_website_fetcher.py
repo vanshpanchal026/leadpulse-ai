@@ -234,3 +234,21 @@ class TestWebsiteContentFetcher:
 
         with pytest.raises(SSRFSecurityError, match="explicitly blocked"):
             validate_and_resolve_url("http://nas.home")
+
+    @pytest.mark.asyncio
+    async def test_fetch_handles_empty_or_whitespace_url(self):
+        fetcher = WebsiteContentFetcher()
+        res_empty = await fetcher.fetch("")
+        assert res_empty.success is False
+        assert "validation failed" in (res_empty.error or "").lower()
+
+        res_spaces = await fetcher.fetch("   ")
+        assert res_spaces.success is False
+        assert "validation failed" in (res_spaces.error or "").lower()
+
+    def test_validate_and_resolve_url_rejects_empty_or_non_string(self):
+        with pytest.raises(ValueError, match="non-empty string"):
+            validate_and_resolve_url("")
+
+        with pytest.raises(ValueError, match="non-empty string"):
+            validate_and_resolve_url(None)  # type: ignore[arg-type]

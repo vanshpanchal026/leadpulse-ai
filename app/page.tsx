@@ -27,7 +27,8 @@ import {
   Phone,
   Globe,
   Flame,
-  ShieldAlert
+  ShieldAlert,
+  LogOut
 } from 'lucide-react';
 import { Lead, LeadStatus, Platform } from '@/types/lead';
 import rawLeads from '@/data/leads.json';
@@ -613,6 +614,16 @@ export default function LeadCommandCenter() {
     }, 3000);
   };
 
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/login', { method: 'DELETE' });
+    } catch {
+      // ignore network errors on logout
+    } finally {
+      window.location.href = '/login';
+    }
+  };
+
   // Load persisted leads from Supabase with localStorage / local JSON fallback
   useEffect(() => {
     let isMounted = true;
@@ -1141,6 +1152,16 @@ export default function LeadCommandCenter() {
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export Leads</span>
+            </button>
+
+            {/* Lock / Sign Out */}
+            <button
+              onClick={handleLogout}
+              title="Lock Dashboard Session"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-transparent hover:bg-stone-200/60 border border-[var(--color-hairline)] text-[var(--color-warm-gray)] hover:text-[var(--color-ink)] text-xs font-medium transition-all cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Lock</span>
             </button>
           </div>
         </div>

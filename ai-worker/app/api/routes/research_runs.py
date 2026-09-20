@@ -138,7 +138,6 @@ async def _execute_research_run(run_id: str, configuration: dict[str, Any]) -> N
                     candidate=candidate,
                     campaign_scope=campaign_scope,
                     limits=limits,
-                    timeout_seconds=120.0,
                 )
                 researched_count += 1
                 total_tokens += opp_result.token_usage.total_tokens
@@ -257,3 +256,17 @@ async def get_research_run(run_id: str) -> ResearchRunRecord:
             detail=f"Research run with ID '{run_id}' not found.",
         )
     return record
+
+
+@router.delete("/{run_id}", status_code=status.HTTP_200_OK)
+async def delete_research_run(run_id: str) -> dict[str, Any]:
+    """Delete a research run by run_id."""
+    service = get_persistence_service()
+    deleted = service.delete_research_run(run_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Research run with ID '{run_id}' not found.",
+        )
+    return {"success": True, "deleted_run_id": run_id}
+

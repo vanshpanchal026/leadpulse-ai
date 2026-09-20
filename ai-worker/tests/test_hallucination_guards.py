@@ -16,7 +16,10 @@ from app.schemas.evidence import (
     AdsAnalysisResult,
     MapsAnalysisResult,
 )
-from app.agents.specialists.website_agent import build_unavailable_website_result
+from app.agents.specialists.website_agent import (
+    build_no_website_result,
+    build_unavailable_website_result,
+)
 from app.agents.specialists.ads_agent import build_no_ads_result
 from app.agents.specialists.maps_agent import build_unavailable_maps_result
 
@@ -60,6 +63,98 @@ class TestWebsiteHallucinationGuards:
                 confidence=0.1,
                 has_whatsapp_cta=True  # Hallucination!
             )
+
+    def test_no_website_does_not_infer_poor_website(self):
+        res = build_no_website_result("No website URL provided")
+        assert res.status == "no_website"
+        assert res.has_booking_system is None
+        assert res.has_whatsapp_cta is None
+        assert res.primary_cta is None
+        assert len(res.friction_points) == 0
+
+        for finding in res.findings:
+            lower = finding.lower()
+            assert "poor website" not in lower
+            assert "bad website" not in lower
+            assert "broken booking" not in lower
+            assert "slow" not in lower
+
+    def test_schema_rejects_observed_features_on_no_website(self):
+        # A model cannot report observed booking, whatsapp, cta or friction when status='no_website'
+        with pytest.raises(ValidationError):
+            WebsiteAnalysisResult(
+                status="no_website",
+                findings=["No website URL provided"],
+                confidence=0.1,
+                has_booking_system=True  # Hallucination!
+            )
+
+        with pytest.raises(ValidationError):
+            WebsiteAnalysisResult(
+                status="no_website",
+                findings=["No website URL provided"],
+                confidence=0.1,
+                has_whatsapp_cta=True  # Hallucination!
+            )
+
+        with pytest.raises(ValidationError):
+            WebsiteAnalysisResult(
+                status="no_website",
+                findings=["No website URL provided"],
+                confidence=0.1,
+                primary_cta="Book Now"  # Hallucination!
+            )
+
+        with pytest.raises(ValidationError):
+            WebsiteAnalysisResult(
+                status="no_website",
+                findings=["No website URL provided"],
+                confidence=0.1,
+                friction_points=["Slow load speed"]  # Hallucination!
+            )
+
+    def test_outreach_rejects_slow_site_pitch_when_no_website(self):
+        from app.services.outreach_validator import validate_outreach
+        from app.schemas.lead_analysis import LeadAnalysis
+
+        evidence = [
+            Evidence(
+                source="website",
+                finding="No website exists or was provided for this business",
+                evidence="Candidate data lacked website URL",
+                confidence=0.9,
+                classification="observed",
+            )
+        ]
+        la = LeadAnalysis(
+            business_name="Apex Smile Clinic",
+            qualification_status="qualified",
+            priority="high",
+            prospect_score=8.0,
+            opportunity_score=80.0,
+            primary_problem="Business lacks a website and online presence to capture local search inquiries",
+            recommended_service="website_development",
+            why_this_service="Building an online presence captures prospective patients searching online",
+            evidence=evidence,
+            confidence=0.9,
+            research_status="complete",
+            limitations=["No website available for this business record"],
+        )
+
+        # Hallucinated pitch claiming the website is slow when none exists
+        bad_msg = (
+            "I noticed your website is slow to load for mobile patients in Gurgaon. "
+            "Speeding up your site could help book more dental appointments."
+        )
+        result = validate_outreach(
+            message=bad_msg,
+            service="website_development",
+            evidence=evidence,
+            lead_analysis=la,
+        )
+        assert result.valid is False
+        assert result.unsupported_claim_detected is True
+        assert any("no website" in r.lower() or "slow" in r.lower() for r in result.reasons)
 
 
 class TestAdsHallucinationGuards:

@@ -152,3 +152,19 @@ class TestOutreachValidator:
         res = validate_outreach(msg, service="whatsapp_automation")
         assert res.valid is False
         assert any("excessive spam punctuation" in r for r in res.reasons)
+
+    def test_rejection_slow_website_pitch_when_no_website(self):
+        evidence = [
+            Evidence(
+                source="website",
+                finding="No website exists or was provided for this business",
+                evidence="no website url in candidate data",
+                confidence=0.9,
+                classification="observed",
+            )
+        ]
+        msg = "I noticed your clinic in Gurgaon. Your website is slow to load and losing clients."
+        res = validate_outreach(msg, service="website_development", evidence=evidence)
+        assert res.valid is False
+        assert res.unsupported_claim_detected is True
+        assert any("no website" in r.lower() or "slow" in r.lower() for r in res.reasons)

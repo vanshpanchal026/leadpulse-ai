@@ -28,6 +28,9 @@ class TestOpportunityAgent:
         assert "NEVER convert an unknown into an observed fact" in instructions
         assert "FORBIDDEN METRICS" in instructions
         assert "WEBSITE INTEGRITY" in instructions
+        assert "no_website" in instructions
+        assert "STATUS DISTINCTION" in instructions
+        assert "getting found in search" in instructions or "search" in instructions
         assert "REVIEW INTEGRITY" in instructions
         assert "LOW EVIDENCE" in instructions
 

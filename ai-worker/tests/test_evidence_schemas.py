@@ -177,6 +177,35 @@ class TestWebsiteAnalysisResultSchema:
                 has_whatsapp_cta=True,  # Contradiction!
             )
 
+    def test_valid_no_website_result(self):
+        res = WebsiteAnalysisResult(
+            status="no_website",
+            findings=["No website exists for this business."],
+            evidence=[],
+            confidence=0.1,
+            limitations=["No website provided"],
+            website_url=None,
+        )
+        assert res.status == "no_website"
+        assert res.has_booking_system is None
+        assert len(res.friction_points) == 0
+
+    def test_no_website_rejects_friction_points_and_quality_claims(self):
+        with pytest.raises(ValidationError, match="Cannot report friction points when status is 'no_website'"):
+            WebsiteAnalysisResult(
+                status="no_website",
+                findings=["No website"],
+                confidence=0.1,
+                friction_points=["Slow mobile load speed"],
+            )
+
+        with pytest.raises(ValidationError, match="Cannot critique site speed or quality"):
+            WebsiteAnalysisResult(
+                status="no_website",
+                findings=["Business has a slow website"],
+                confidence=0.1,
+            )
+
 
 class TestAdsAnalysisResultSchema:
     """Validation tests for Ads Specialist output schema."""

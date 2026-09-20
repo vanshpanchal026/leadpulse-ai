@@ -56,7 +56,7 @@ class Settings(BaseModel):
 
     # Execution & Timeout Controls
     AI_TIMEOUT_SECONDS: float = Field(
-        default=60.0,
+        default=180.0,
         gt=0.0,
         le=300.0,
         description="Execution timeout in seconds for agent calls"
@@ -208,7 +208,15 @@ def create_settings(load_env: bool = True) -> Settings:
 
     supabase_service = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if supabase_service and supabase_service.strip():
-        kwargs["SUPABASE_SERVICE_ROLE_KEY"] = SecretStr(supabase_service.strip())
+        cleaned_service = supabase_service.strip()
+        if "your_" in cleaned_service.lower() or "placeholder" in cleaned_service.lower():
+            cleaned_service = None
+        if cleaned_service:
+            kwargs["SUPABASE_SERVICE_ROLE_KEY"] = SecretStr(cleaned_service)
+        elif kwargs.get("SUPABASE_ANON_KEY"):
+            kwargs["SUPABASE_SERVICE_ROLE_KEY"] = kwargs["SUPABASE_ANON_KEY"]
+    elif kwargs.get("SUPABASE_ANON_KEY"):
+        kwargs["SUPABASE_SERVICE_ROLE_KEY"] = kwargs["SUPABASE_ANON_KEY"]
 
     persistence_db = os.environ.get("PERSISTENCE_DB_PATH")
     if persistence_db and persistence_db.strip():

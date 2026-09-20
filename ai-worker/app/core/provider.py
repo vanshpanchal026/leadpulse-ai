@@ -36,7 +36,7 @@ class ProviderConfig(BaseModel):
     api_mode: str = Field(default="chat_completions", description="Provider protocol mode")
     use_responses: bool = Field(default=False, description="Strict Phase 1 requirement: Chat Completions mode")
     tracing_disabled: bool = Field(default=True, description="Strict Phase 1 requirement: Telemetry disabled")
-    timeout_seconds: float = Field(default=60.0, gt=0.0, description="Default timeout in seconds")
+    timeout_seconds: float = Field(default=180.0, gt=0.0, description="Default timeout in seconds")
     max_retries: int = Field(default=2, ge=0, description="Maximum transient retry attempts")
 
     @field_validator("api_mode")

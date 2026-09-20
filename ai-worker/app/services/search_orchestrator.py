@@ -115,7 +115,7 @@ class SearchOrchestratorService:
                 prompt=prompt,
                 agent_type="search_strategist",
                 context=context_data,
-                timeout_seconds=60.0
+                timeout_seconds=None,
             )
         )
 

@@ -65,3 +65,29 @@ export async function POST(
     );
   }
 }
+
+export async function DELETE(
+  req: NextRequest,
+  context: { params: Promise<{ path: string[] }> }
+) {
+  const { path } = await context.params;
+  const subpath = path.join('/');
+  const workerUrl = getWorkerUrl();
+
+  try {
+    const res = await fetch(`${workerUrl}/api/v1/research-runs/${subpath}`, {
+      method: 'DELETE',
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    const data = await res.json();
+    return NextResponse.json(data, { status: res.status });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: 'AI Worker research endpoint unreachable', details: err.message },
+      { status: 502 }
+    );
+  }
+}
+

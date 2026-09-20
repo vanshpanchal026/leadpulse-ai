@@ -129,7 +129,7 @@ class WebsiteAnalysisResult(BaseModel):
     """Structured output from the controlled Website Specialist Agent."""
     model_config = ConfigDict(populate_by_name=True)
 
-    status: Literal["available", "unavailable", "partial", "error"] = Field(
+    status: Literal["available", "unavailable", "partial", "error", "no_website"] = Field(
         ...,
         description="Website availability status"
     )
@@ -146,8 +146,8 @@ class WebsiteAnalysisResult(BaseModel):
 
     @model_validator(mode="after")
     def validate_anti_hallucination(self) -> "WebsiteAnalysisResult":
-        # If website is unavailable or error, never claim observed booking, WhatsApp, or primary CTA
-        if self.status in ("unavailable", "error"):
+        # If website is unavailable, error, or no_website, never claim observed booking, WhatsApp, or primary CTA
+        if self.status in ("unavailable", "error", "no_website"):
             if self.has_booking_system is True:
                 raise ValueError("Anti-hallucination guard: Cannot report has_booking_system=True when website is unavailable.")
             if self.has_whatsapp_cta is True:
@@ -160,7 +160,20 @@ class WebsiteAnalysisResult(BaseModel):
                 lower = text.lower()
                 if any(bad in lower for bad in ("poor website", "bad website", "broken booking", "bad booking system", "unprofessional website")):
                     raise ValueError(
-                        f"Anti-hallucination guard: Cannot infer poor website quality ('{text}') simply because the website could not be reached."
+                        f"Anti-hallucination guard: Cannot infer poor website quality ('{text}') simply because the website could not be reached or does not exist."
+                    )
+
+        # When no website exists, skip analysis entirely: no friction claims allowed
+        if self.status == "no_website":
+            if len(self.friction_points) > 0:
+                raise ValueError(
+                    "Anti-hallucination guard: Cannot report friction points when status is 'no_website' (there is no website to audit)."
+                )
+            for text in self.findings:
+                lower = text.lower()
+                if any(bad in lower for bad in ("slow", "page speed", "load time", "loading speed", "broken", "unprofessional")):
+                    raise ValueError(
+                        f"Anti-hallucination guard: Cannot critique site speed or quality ('{text}') when status is 'no_website' (business has no website)."
                     )
         return self
 

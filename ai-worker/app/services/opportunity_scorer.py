@@ -131,9 +131,12 @@ def calculate_opportunity_score(
         frictions.extend(candidate.friction_points)
 
     # Missing digital presence / website
-    if not has_website or website_status == "unavailable":
+    if not has_website or website_status in ("unavailable", "no_website"):
         components["missing_website_friction"] = 15.0
-        frictions.append("No accessible website or online storefront")
+        if website_status == "no_website" or not has_website:
+            frictions.append("No website or online storefront (missed digital presence)")
+        else:
+            frictions.append("No accessible website or online storefront (website unreachable)")
     else:
         components["missing_website_friction"] = 0.0
         # Website exists: check booking and WhatsApp friction
@@ -211,7 +214,7 @@ def calculate_opportunity_score(
                 success_count += 1
             elif "fail" in status_str or "error" in status_str or "exception" in status_str or "timeout" in status_str or "block" in status_str:
                 limitations.append(f"{spec_key.capitalize()} research unavailable: {status_str}")
-            elif status_str in ("no_url", "no_ads", "unavailable"):
+            elif status_str in ("no_url", "no_ads", "unavailable", "no_website"):
                 limitations.append(f"{spec_key.capitalize()} data absent or unobservable ({status_str})")
             else:
                 limitations.append(f"{spec_key.capitalize()} research ended with status: {status_str}")
@@ -265,12 +268,19 @@ def calculate_opportunity_score(
         # -------------------------------------------------------------
         # 7. Deterministic Service Recommendation Mapping
         # -------------------------------------------------------------
-        if not has_website or website_status == "unavailable":
+        if not has_website or website_status == "no_website":
             recommended_service = "website_development"
-            primary_problem = "Business lacks an accessible, conversion-focused website to capture inbound search traffic."
+            primary_problem = "Business lacks a website and online presence, missing inbound discovery and local search traffic."
             why_this_service = (
-                "Developing a high-performance Next.js web application establishes a professional digital presence, "
-                "providing an immediate conversion hub for prospective clients."
+                "Developing a modern, search-optimized web presence establishes discoverability and captures "
+                "prospective clients searching for local services."
+            )
+        elif website_status == "unavailable":
+            recommended_service = "website_development"
+            primary_problem = "Business website exists but is unreachable or failing to load, losing inbound visitors."
+            why_this_service = (
+                "Resolving site infrastructure and deploying a reliable, high-performance web presence ensures prospective "
+                "clients can access services without downtime or connection errors."
             )
         elif has_active_ads and has_whatsapp is False:
             recommended_service = "whatsapp_automation"
