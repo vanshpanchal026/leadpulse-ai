@@ -38,7 +38,9 @@ repomix-output.xml
 
 # Python Caches & Environments
 __pycache__/
+**/__pycache__/
 *.py[cod]
+**/*.py[cod]
 *.class
 *.so
 .Python
@@ -49,11 +51,14 @@ ENV/
 .pytest_cache/
 **/.pytest_cache/
 
-# Local Databases (SQLite & mirrors)
+# Local Databases & Backups (Never commit raw databases or snapshots)
 *.db
+*.db.*
 *.sqlite
 *.sqlite3
-data/*.db
+data/*.db*
+*.bak
+*.bak*
 
 # Raw Scraped PII & Data Backups
 data/*.csv

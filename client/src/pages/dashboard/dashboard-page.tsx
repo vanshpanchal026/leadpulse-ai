@@ -137,6 +137,11 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6 w-full">
+      {/* 
+        NON-NEGOTIABLE SAFETY INVARIANT:
+        external_send_executed = false
+        The system enforces zero automated messaging. A human operator reviews, edits, and approves drafts.
+      */}
       {/* Hero Control Bar */}
       <PageHeader
         title="Campaign Command Center"

@@ -46,10 +46,16 @@ def create_app() -> FastAPI:
         lifespan=lifespan
     )
 
-    # Allow local Next.js client integration
+    # Allow local Next.js and Vite client integration
+    allowed_origins = [
+        "http://localhost:3000",
+        "http://localhost:3500",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3500",
+    ]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=allowed_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

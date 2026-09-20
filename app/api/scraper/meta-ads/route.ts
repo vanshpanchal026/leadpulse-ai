@@ -631,8 +631,36 @@ Target Business & Ad Data:
   };
 }
 
+function isAuthorized(req: NextRequest): boolean {
+  if (process.env.NODE_ENV !== 'production') {
+    return true;
+  }
+  const secret = process.env.INTERNAL_API_SECRET;
+  if (!secret) {
+    return true;
+  }
+  const internalSecret = req.headers.get('x-internal-secret');
+  const authHeader = req.headers.get('authorization');
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+
+  return internalSecret === secret || bearerToken === secret;
+}
+
 export async function POST(req: NextRequest) {
   try {
+    if (!isAuthorized(req)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Unauthorized: Invalid or missing internal API secret.',
+          },
+        },
+        { status: 401 }
+      );
+    }
+
     const apifyToken = process.env.APIFY_API_TOKEN || process.env.APIFY_TOKEN;
     const geminiKey = process.env.GEMINI_API_KEY;
 

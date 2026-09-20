@@ -17,7 +17,7 @@ services:
       - AI_WORKER_PORT=8000
       - PYTHONUNBUFFERED=1
     volumes:
-      - ./ai-worker/data:/app/data
+      - ./data:/app/data
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 10s
