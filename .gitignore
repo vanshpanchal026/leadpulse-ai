@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 /.pnp
 .pnp.js
@@ -21,6 +21,7 @@ next-env.d.ts
 *.env
 
 # IDE & Editor configurations (Contains local MCP keys)
+.claude/
 .vscode/
 .cursor/
 .idea/
@@ -32,11 +33,14 @@ next-env.d.ts
 
 # Agent & AI caches
 .agents/
+.kilo/
 repomix-output.xml
 
 # Python Caches & Environments
 __pycache__/
+**/__pycache__/
 *.py[cod]
+**/*.py[cod]
 *.class
 *.so
 .Python
@@ -44,9 +48,28 @@ env/
 venv/
 ENV/
 .venv/
+.pytest_cache/
+**/.pytest_cache/
+
+# Local Databases & Backups (Never commit raw databases or snapshots)
+*.db
+*.db.*
+*.sqlite
+*.sqlite3
+data/*.db*
+*.bak
+*.bak*
 
 # Raw Scraped PII & Data Backups
 data/*.csv
+data/*.xlsx
+data/archive_*.json
+*.xlsx
+*.xls
+
+# Supabase Local Temp
+supabase/.temp/
+.temp/
 
 # Logs
 *.log
@@ -59,3 +82,13 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+
+
+.vercel

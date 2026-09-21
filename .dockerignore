@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.gitignore
+*.log
+.env.local
+ai-worker/data/*.db
+ai-worker/__pycache__
+ai-worker/**/__pycache__
+.pytest_cache
+client/dist
+client/node_modules
+Dockerfile
+docker-compose.yml
+so 

@@ -72,6 +72,21 @@ async function migrateLeads() {
       status: item.status || 'new',
       created_at: item.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
+
+      // Local Prospecting & Multi-Channel Specific Columns
+      business_name: item.business_name || null,
+      phone_number: item.phone_number || null,
+      website_url: item.website_url || null,
+      instagram_url: item.instagram_url || null,
+      google_maps_url: item.google_maps_url || null,
+      address: item.address || null,
+      rating: item.rating ? Number(item.rating) : null,
+      review_count: typeof item.review_count === 'number' ? item.review_count : 0,
+      has_active_ads: Boolean(item.has_active_ads),
+      prospect_score: typeof item.prospect_score === 'number' ? item.prospect_score : 0,
+      audit_friction_points: Array.isArray(item.audit_friction_points) ? item.audit_friction_points : [],
+      direct_contact_channel: item.direct_contact_channel || 'whatsapp',
+      notes: item.notes || null,
     };
 
     // Include id only if it is already a valid UUID so Postgres uuid column doesn't error

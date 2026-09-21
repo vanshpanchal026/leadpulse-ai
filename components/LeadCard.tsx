@@ -74,6 +74,27 @@ export function isLegitWebsiteUrl(url?: string | null): boolean {
   );
 }
 
+export function getServiceBadgeInfo(service?: string) {
+  switch (service) {
+    case 'website_development':
+      return { label: 'Website Dev', bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' };
+    case 'booking_automation':
+      return { label: 'Online Booking', bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200' };
+    case 'whatsapp_automation':
+      return { label: 'Inquiry Capture', bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' };
+    case 'lead_automation':
+      return { label: 'Speed-to-Lead', bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' };
+    case 'ai_agents':
+      return { label: 'Inquiry Assistant', bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200' };
+    case 'crm_workflow_automation':
+      return { label: 'CRM Sync', bg: 'bg-fuchsia-50', text: 'text-fuchsia-700', border: 'border-fuchsia-200' };
+    case 'business_automation':
+      return { label: 'Business Ops', bg: 'bg-sky-50', text: 'text-sky-700', border: 'border-sky-200' };
+    default:
+      return null;
+  }
+}
+
 export const LeadCard: React.FC<LeadCardProps> = ({
   lead,
   isActive,
@@ -85,6 +106,7 @@ export const LeadCard: React.FC<LeadCardProps> = ({
   const isMetaAds = lead.source_platform === 'meta_ads';
   const isLocalLead = isGoogleMaps || isMetaAds;
   const score = lead.prospect_score ?? lead.confidence_score ?? 0;
+  const serviceBadge = getServiceBadgeInfo(lead.recommended_service);
 
   const formatStatus = (status: LeadStatus) => {
     switch (status) {
@@ -208,6 +230,13 @@ export const LeadCard: React.FC<LeadCardProps> = ({
             {getStatusIcon(lead.status)}
             <span>{formatStatus(lead.status)}</span>
           </span>
+
+          {/* Recommended Service Badge */}
+          {serviceBadge && (
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${serviceBadge.bg} ${serviceBadge.text} ${serviceBadge.border}`}>
+              {serviceBadge.label}
+            </span>
+          )}
 
           {/* Local / Meta Ads Scorecard Pill */}
           {isLocalLead ? (

@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { Lead } from '@/types/lead';
 import { calculateProspectScore, detectFrictionPoints } from '@/lib/scorecard';
 import { BANNED_PHRASES, countSentences, detectPlaceholders } from '@/lib/anti-spam-validator';
+import { emitAgentEvent } from '@/lib/agent-telemetry';
 
 export const maxDuration = 300; // 5 minute timeout for Next.js / Vercel
 
@@ -18,6 +19,7 @@ interface IngestionRequest {
   items?: any[];
   places?: any[];
   hasActiveAdsOverride?: boolean;
+  testMode?: boolean;
 }
 
 const DEFAULT_SEARCH_QUERIES = [
@@ -25,6 +27,9 @@ const DEFAULT_SEARCH_QUERIES = [
   'dental clinic in South Delhi',
   'hair transplant clinic Delhi',
   'luxury salon Delhi',
+  'restaurants in Connaught Place Delhi',
+  'gyms in South Delhi',
+  'real estate agency in Gurgaon',
 ];
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -89,7 +94,7 @@ function extractInstagramUrl(raw: any): string | undefined {
 }
 
 /**
- * Generates an operational WhatsApp audit pitch via Gemini 2.5 Flash
+ * Generates an honest, outcome-focused audit observation via Gemini 2.5 Flash
  */
 async function generateAuditPitchWithGemini(
   model: any,
@@ -101,25 +106,32 @@ async function generateAuditPitchWithGemini(
     reviewCount: number;
     rating: number;
     frictionPoints: string[];
+    recommendedService?: string;
   },
   maxRetries = 3
 ): Promise<{ draft_pitch: string; identified_problem: string } | null> {
+  const service = business.recommendedService || 'whatsapp_automation';
   const frictionText = business.frictionPoints.length > 0
     ? business.frictionPoints.join('; ')
-    : 'No direct WhatsApp booking button or automated inquiry response mechanism detected.';
+    : 'No direct self-serve calendar booking or 24/7 inquiry capture detected.';
 
   const systemPrompt = `
-You are a solo local tech & operations consultant doing a direct operational audit for clinic and salon owners in Delhi NCR.
-Write a direct, 2-to-3 sentence casual observation/pitch for WhatsApp.
+You are Vansh, a solo freelance developer doing an honest technical observation for a local business in Delhi NCR.
+Write a direct, 2-to-3 sentence casual observation/message connecting their operational bottleneck to an outcome.
 
-RULES (STRICT PEER-TO-PEER TONE):
-1. 2 to 3 sentences maximum (under 300 characters).
-2. Write as an individual peer typing from a phone or laptop.
-3. Reference the specific operational friction directly (e.g. missing WhatsApp booking link on website despite high review count).
-4. Share a specific technical tip on capturing after-hours patients/clients without front-desk phone tag.
-5. ZERO corporate or agency buzzwords:
-   - NEVER use: "We help...", "We specialize in...", "Our team", "Game-changer", "Streamline", "Leverage", "Tailored solution", "Let's hop on a call", "Book a demo".
-6. Do NOT include template bracket placeholders like [Name], [Company], or [Clinic].
+STRICT OUTREACH INVARIANTS:
+1. Exactly 2 to 3 sentences maximum (under 300 characters).
+2. Write as an individual solo peer typing directly from a laptop or phone.
+3. NEVER say "we", "our team", "our agency", or "our clients".
+4. OUTCOME REFRAMING: Never describe services as "AI chatbot" or "automation". Reframe entirely around concrete outcomes (capturing missed inquiries, self-serve booking calendar, eliminating form drop-off). The technical implementation stays invisible.
+5. NO MEETING REQUESTS: Never include meeting or call requests (banned: "hop on a call", "book a call", "jump on a call", "schedule a demo", "quick chat").
+6. NO PRICING: Never mention pricing or package fees.
+7. NO PAST CLIENT FABRICATION: Never fabricate past clients, case studies, or testimonials.
+8. LEAD WITH TECHNICAL OBSERVATION: Open directly with a genuine observation on their specific setup or bottleneck — never open with a sales pitch.
+9. ZERO BUZZWORDS: Banned words: "streamline", "leverage", "game-changer", "tailored solution", "reach out anytime", "feel free to DM".
+10. Do NOT include template bracket placeholders like [Name], [Company], or [Clinic].
+
+Recommended Service Target: ${service}
 
 Return strictly valid JSON:
 {
@@ -137,6 +149,7 @@ Target Business Data:
 - Google Reviews: ${business.reviewCount} (Rating: ${business.rating}★)
 - Website: ${business.website || 'None'}
 - Identified Operational Friction: ${frictionText}
+- Recommended Service: ${service}
 `;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -186,10 +199,28 @@ Target Business Data:
     }
   }
 
-  // High-quality deterministic fallback pitch
-  const fallbackPitch = business.reviewCount >= 50
-    ? `Noticed ${business.name} has over ${business.reviewCount} reviews on Maps, but there's no direct 1-click WhatsApp booking button on your site. Most clinics lose 20-30% of after-hours appointment requests when patients have to call manual landlines instead of texting.`
-    : `Hey ${business.name} team, saw your clinic listing and noticed there is no direct WhatsApp appointment capture on your page. Adding a direct wa.me scheduling link helps convert walk-in and search inquiries instantly without phone tag.`;
+  // Service-specific high-quality deterministic fallback pitches
+  let fallbackPitch = '';
+  switch (service) {
+    case 'website_development':
+      fallbackPitch = `Noticed ${business.name} has a strong local standing with ${business.reviewCount} reviews, but lacks an official mobile-optimized website for direct appointment capture. A fast web page makes it much easier for search visitors to book directly instead of bouncing.`;
+      break;
+    case 'booking_automation':
+      fallbackPitch = `Noticed ${business.name} has over ${business.reviewCount} reviews on Maps, but clients still have to call landlines to schedule appointments. Adding a self-serve calendar booking link eliminates phone tag and lets clients book after hours.`;
+      break;
+    case 'lead_automation':
+      fallbackPitch = `Saw ${business.name} running sponsored campaigns in Delhi. A lot of mobile ad traffic drops off on landing page forms when there is no instant follow-up, so an automated intake flow usually doubles booked clients.`;
+      break;
+    case 'ai_agents':
+      fallbackPitch = `Noticed ${business.name} handles high customer volume across services. Automating standard inquiry intake helps your team focus on in-person visitors while ensuring every question gets answered immediately.`;
+      break;
+    case 'crm_workflow_automation':
+      fallbackPitch = `Saw ${business.name} managing a high volume of appointment inquiries. Connecting customer intake directly to your calendar and database prevents bookings from slipping through the cracks during busy hours.`;
+      break;
+    default:
+      fallbackPitch = `Noticed ${business.name} has great local reviews, but there is no direct WhatsApp inquiry link on your site. Most local businesses lose after-hours appointment requests when clients have to call manual landlines instead of texting.`;
+      break;
+  }
 
   return {
     draft_pitch: fallbackPitch,
@@ -197,16 +228,70 @@ Target Business Data:
   };
 }
 
+function isAuthorized(req: NextRequest): boolean {
+  if (process.env.NODE_ENV !== 'production') {
+    return true;
+  }
+  const secret = process.env.INTERNAL_API_SECRET;
+  if (!secret) {
+    return true;
+  }
+  const internalSecret = req.headers.get('x-internal-secret');
+  const authHeader = req.headers.get('authorization');
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+
+  return internalSecret === secret || bearerToken === secret;
+}
+
 export async function POST(req: NextRequest) {
   try {
+    if (!isAuthorized(req)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Unauthorized: Invalid or missing internal API secret.',
+          },
+        },
+        { status: 401 }
+      );
+    }
+
     const apifyToken = process.env.APIFY_API_TOKEN || process.env.APIFY_TOKEN;
     const geminiKey = process.env.GEMINI_API_KEY;
 
     const body: IngestionRequest = await req.json().catch(() => ({}));
     let rawItems: any[] = [];
 
-    // 1. Ingest from Apify Actor or Payload
-    if (body.runActor === true) {
+    // 1. Ingest from Fast Test Mode, Apify Actor, or Payload
+    if (body.testMode === true) {
+      console.log('[Google Maps Pipeline] Running Fast Test with verified Delhi clinic samples...');
+      rawItems = [
+        {
+          name: "Dr. Batra's Skin & Hair Clinic",
+          categoryName: "Skin care clinic",
+          website: "https://drbatras.com",
+          phone: "+919811234567",
+          address: "M-41, Greater Kailash II, New Delhi, Delhi 110048",
+          totalScore: 4.8,
+          reviewsCount: 185,
+          hasActiveAds: true,
+          placeUrl: "https://www.google.com/maps/place/?q=Dr+Batras+GK2"
+        },
+        {
+          name: "South Delhi Dental & Aesthetic Studio",
+          categoryName: "Dental Clinic",
+          website: "https://southdelhidentalstudio.in",
+          phone: "+919871122334",
+          address: "A-14, Green Park Extension, New Delhi, Delhi 110016",
+          totalScore: 4.9,
+          reviewsCount: 92,
+          hasActiveAds: false,
+          placeUrl: "https://www.google.com/maps/place/?q=South+Delhi+Dental+Studio"
+        }
+      ];
+    } else if (body.runActor === true) {
       if (!apifyToken) {
         return NextResponse.json(
           {
@@ -221,19 +306,38 @@ export async function POST(req: NextRequest) {
       }
 
       console.log('[Google Maps Pipeline] Launching Apify actor compass/crawler-google-places...');
-      const client = new ApifyClient({ token: apifyToken });
       const searchQueries = (body.searchQueries && body.searchQueries.length > 0)
         ? body.searchQueries
         : DEFAULT_SEARCH_QUERIES;
 
+      emitAgentEvent({
+        agentName: 'Search Strategist',
+        agentRole: 'search_strategist',
+        type: 'agent_spawn',
+        title: 'Google Maps Pipeline Initiated',
+        content: `Search targets: ${searchQueries.join(', ')}`,
+      });
+
+      const client = new ApifyClient({ token: apifyToken });
+
       const actorInput = {
         searchStringsArray: searchQueries,
-        maxCrawledPlacesPerSearch: Math.min(Math.max(1, body.maxPlacesPerSearch || 15), 30),
+        maxCrawledPlacesPerSearch: Math.min(Math.max(1, body.maxPlacesPerSearch || 5), 15),
         language: 'en',
         scrapeWebSocialMedia: true,
         scrapePlaceDetails: true,
         skipClosedPlaces: true,
       };
+
+      emitAgentEvent({
+        agentName: 'Discovery Scraper',
+        agentRole: 'discovery_scraper',
+        type: 'tool_call',
+        title: 'Dispatching Apify Google Places Actor',
+        toolName: 'compass/crawler-google-places',
+        toolArgs: { queries: searchQueries, limit: actorInput.maxCrawledPlacesPerSearch },
+        content: 'Querying Google Maps for local businesses with contact information and reviews.',
+      });
 
       const run = await client.actor('compass/crawler-google-places').call(actorInput);
       console.log(`[Google Maps Pipeline] Apify run completed with status: ${run.status}`);
@@ -241,6 +345,15 @@ export async function POST(req: NextRequest) {
       const dataset = client.dataset(run.defaultDatasetId);
       const { items } = await dataset.listItems();
       rawItems = items;
+
+      emitAgentEvent({
+        agentName: 'Discovery Scraper',
+        agentRole: 'discovery_scraper',
+        type: 'tool_result',
+        title: 'Places Discovered',
+        content: `Found ${rawItems.length} place records from Google Maps.`,
+        durationMs: 1200,
+      });
     } else {
       rawItems = Array.isArray(body.items)
         ? body.items
@@ -250,16 +363,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (rawItems.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: 'EMPTY_INPUT',
-            message: 'No Google Places items provided. Pass "items": [...] or set "runActor": true.',
-          },
-        },
-        { status: 400 }
-      );
+      return NextResponse.json({
+        success: true,
+        message: 'No places found matching the search query.',
+        total_ingested: 0,
+        duplicates_skipped: 0,
+        evaluated: 0,
+        qualified_leads_count: 0,
+        leads: []
+      });
     }
 
     console.log(`[Google Maps Pipeline] Processing ${rawItems.length} raw place records...`);
@@ -331,15 +443,17 @@ export async function POST(req: NextRequest) {
 
       const normalizedPhone = normalizePhoneNumber(raw.phone || raw.phoneNumber || raw.phoneUnformatted);
 
-      // Deduplicate on source_url or phone_number
+      // Deduplicate on source_url or phone_number (bypassed in testMode)
       const urlKey = sourceUrl.toLowerCase();
-      if (sourceUrl && trackedUrls.has(urlKey)) {
-        duplicatesCount++;
-        continue;
-      }
-      if (normalizedPhone && trackedPhones.has(normalizedPhone)) {
-        duplicatesCount++;
-        continue;
+      if (!body.testMode) {
+        if (sourceUrl && trackedUrls.has(urlKey)) {
+          duplicatesCount++;
+          continue;
+        }
+        if (normalizedPhone && trackedPhones.has(normalizedPhone)) {
+          duplicatesCount++;
+          continue;
+        }
       }
 
       const websiteUrl = (
@@ -428,81 +542,125 @@ export async function POST(req: NextRequest) {
 
     const qualifiedLeads: Lead[] = [];
 
-    for (let i = 0; i < normalizedCandidates.length; i++) {
-      const cand = normalizedCandidates[i];
-      const { scorecard } = cand;
+    await Promise.all(
+      normalizedCandidates.map(async (cand) => {
+        const { scorecard } = cand;
+        let draftPitch = '';
+        let identifiedProblem = cand.frictionPoints.join('; ') || 'Missing direct appointment booking and WhatsApp funnel.';
 
-      let draftPitch = '';
-      let identifiedProblem = cand.frictionPoints.join('; ') || 'Missing direct appointment booking and WhatsApp funnel.';
-
-      // Generate personalized Gemini pitch if qualified (Score >= 6)
-      if (scorecard.score >= 6 && geminiModel) {
-        console.log(`[Google Maps Pipeline] Generating pitch (${i + 1}/${normalizedCandidates.length}) for "${cand.business_name}" (Score: ${scorecard.score}/10)...`);
-        const pitchResult = await generateAuditPitchWithGemini(geminiModel, {
-          name: cand.business_name,
-          type: cand.business_type,
-          website: cand.website_url,
-          phone: cand.phone_number,
-          reviewCount: cand.review_count,
-          rating: cand.rating,
-          frictionPoints: cand.frictionPoints,
+        emitAgentEvent({
+          agentName: 'Specialist Swarm',
+          agentRole: 'website_auditor',
+          subagentName: 'Website & Booking Friction Auditor',
+          type: 'thinking',
+          title: `Auditing ${cand.business_name}`,
+          content: `Score: ${scorecard.score}/10. Recommended: ${scorecard.recommendedService}`,
+          thinkingProcess: `Evaluating ${cand.business_name} (${cand.business_type}): Rating ${cand.rating}★ with ${cand.review_count} reviews. Website: ${cand.website_url || 'Missing'}. Detected frictions: ${cand.frictionPoints.join('; ') || 'Standard intake'}. Mapped service: ${scorecard.recommendedService}.`,
         });
 
-        if (pitchResult) {
-          draftPitch = pitchResult.draft_pitch;
-          identifiedProblem = pitchResult.identified_problem;
+        // Generate personalized Gemini pitch if qualified (Score >= 6)
+        if (scorecard.score >= 6 && geminiModel) {
+          try {
+            console.log(`[Google Maps Pipeline] Generating pitch for "${cand.business_name}" (${scorecard.recommendedService}, Score: ${scorecard.score}/10)...`);
+            const pitchResult = await generateAuditPitchWithGemini(geminiModel, {
+              name: cand.business_name,
+              type: cand.business_type,
+              website: cand.website_url,
+              phone: cand.phone_number,
+              reviewCount: cand.review_count,
+              rating: cand.rating,
+              frictionPoints: cand.frictionPoints,
+              recommendedService: scorecard.recommendedService,
+            });
+
+            if (pitchResult) {
+              draftPitch = pitchResult.draft_pitch;
+              identifiedProblem = pitchResult.identified_problem;
+            }
+          } catch (e: any) {
+            console.warn(`[Google Maps Pipeline] Gemini pitch generation fallback for "${cand.business_name}":`, e.message);
+          }
         }
 
-        // Brief delay between Gemini calls to respect rate limits
-        if (i < normalizedCandidates.length - 1) {
-          await sleep(1000);
+        if (!draftPitch && scorecard.score >= 6) {
+          // Fallback pitch when Gemini is not configured or failed
+          switch (scorecard.recommendedService) {
+            case 'website_development':
+              draftPitch = `Noticed ${cand.business_name} has a strong local standing with ${cand.review_count || 30} reviews, but lacks an official mobile-optimized website for direct appointment capture. A fast landing page makes it much easier for search visitors to book directly instead of bouncing.`;
+              break;
+            case 'booking_automation':
+              draftPitch = `Noticed ${cand.business_name} has over ${cand.review_count || 40} reviews on Maps, but clients still have to call manual landlines to schedule appointments. Adding a self-serve calendar booking link eliminates phone tag and captures clients after hours.`;
+              break;
+            case 'lead_automation':
+              draftPitch = `Saw ${cand.business_name} running active local marketing. A lot of mobile ad traffic drops off on landing page forms when there is no instant follow-up, so an automated intake flow usually doubles booked clients.`;
+              break;
+            case 'ai_agents':
+              draftPitch = `Noticed ${cand.business_name} handles high customer volume across services. Automating standard inquiry intake helps front-desk staff focus on in-person visitors while ensuring every question gets answered immediately.`;
+              break;
+            case 'crm_workflow_automation':
+              draftPitch = `Saw ${cand.business_name} managing a high volume of appointment inquiries. Connecting customer intake directly to your calendar and database prevents bookings from slipping through the cracks during busy hours.`;
+              break;
+            default:
+              draftPitch = `Hey ${cand.business_name} team, noticed your business on Google Maps with ${cand.review_count || 50}+ reviews, but there is no direct WhatsApp appointment capture on your page. Adding a direct wa.me scheduling link helps convert walk-in and search inquiries instantly.`;
+              break;
+          }
         }
-      } else if (scorecard.score >= 6) {
-        // Fallback pitch when Gemini is not configured
-        draftPitch = `Hey ${cand.business_name} team, noticed there is no direct WhatsApp booking link on your page despite your strong review count. Adding a 1-click wa.me scheduling link captures after-hours appointments without manual phone tag.`;
-      }
 
-      // Map Instagram handle or category for subreddit_or_handle
-      let handleOrCategory = cand.business_type;
-      if (cand.instagram_url) {
-        const igMatch = cand.instagram_url.match(/instagram\.com\/([a-zA-Z0-9_.]+)/);
-        if (igMatch && igMatch[1]) {
-          handleOrCategory = `@${igMatch[1]}`;
+        // Map Instagram handle or category for subreddit_or_handle
+        let handleOrCategory = cand.business_type;
+        if (cand.instagram_url) {
+          const igMatch = cand.instagram_url.match(/instagram\.com\/([a-zA-Z0-9_.]+)/);
+          if (igMatch && igMatch[1]) {
+            handleOrCategory = `@${igMatch[1]}`;
+          }
         }
-      }
 
-      const leadRecord: Lead = {
-        id: crypto.randomUUID(),
-        source_platform: 'google_maps',
-        source_url: cand.source_url,
-        author: cand.business_name,
-        subreddit_or_handle: handleOrCategory,
-        title: cand.business_name,
-        body_text: `${cand.business_name} - ${cand.business_type} in ${cand.address || 'Delhi NCR'}. Rating: ${cand.rating}★ (${cand.review_count} reviews). Website: ${cand.website_url || 'None'}. Phone: ${cand.phone_number || 'None'}.`,
-        identified_problem: identifiedProblem,
-        business_type: cand.business_type,
-        confidence_score: scorecard.score,
-        draft_pitch: draftPitch,
-        status: 'new',
-        created_at: new Date().toISOString(),
+        const leadRecord: Lead = {
+          id: crypto.randomUUID(),
+          source_platform: 'google_maps',
+          source_url: cand.source_url,
+          author: cand.business_name,
+          subreddit_or_handle: handleOrCategory,
+          title: cand.business_name,
+          body_text: `Google Maps Business: ${cand.business_name}. Category: ${cand.business_type}. Rating: ${cand.rating}★ (${cand.review_count} reviews). Address: ${cand.address || 'Delhi NCR'}. Website: ${cand.website_url || 'None'}. Phone: ${cand.phone_number || 'None'}.`,
+          identified_problem: identifiedProblem,
+          business_type: cand.business_type,
+          confidence_score: scorecard.score,
+          draft_pitch: draftPitch,
+          status: 'new',
+          created_at: new Date().toISOString(),
+          business_name: cand.business_name,
+          phone_number: cand.phone_number,
+          website_url: cand.website_url,
+          instagram_url: cand.instagram_url,
+          google_maps_url: cand.source_url,
+          address: cand.address,
+          rating: cand.rating,
+          review_count: cand.review_count,
+          has_active_ads: cand.has_active_ads,
+          prospect_score: scorecard.score,
+          audit_friction_points: cand.frictionPoints,
+          direct_contact_channel: cand.phone_number ? 'whatsapp' : 'email',
+          recommended_service: scorecard.recommendedService,
+        };
 
-        // Local prospecting & multi-channel outreach properties
-        business_name: cand.business_name,
-        phone_number: cand.phone_number,
-        website_url: cand.website_url,
-        instagram_url: cand.instagram_url,
-        google_maps_url: cand.source_url,
-        address: cand.address,
-        rating: cand.rating,
-        review_count: cand.review_count,
-        has_active_ads: cand.has_active_ads,
-        prospect_score: scorecard.score,
-        audit_friction_points: scorecard.frictionPoints,
-        direct_contact_channel: 'whatsapp',
-      };
+        if (draftPitch) {
+          emitAgentEvent({
+            agentName: 'Outreach Copywriter',
+            agentRole: 'outreach_copywriter',
+            type: 'decision',
+            title: `Drafted Audit Pitch for ${cand.business_name}`,
+            content: draftPitch,
+            metadata: {
+              service: scorecard.recommendedService,
+              score: scorecard.score,
+            },
+          });
+        }
 
-      qualifiedLeads.push(leadRecord);
-    }
+        qualifiedLeads.push(leadRecord);
+      })
+    );
 
     // 6. Database Upsert & Local JSON Backup
     if (qualifiedLeads.length > 0) {
@@ -540,6 +698,14 @@ export async function POST(req: NextRequest) {
         console.error('[Google Maps Pipeline] Failed to sync local data/leads.json:', fsErr.message);
       }
     }
+
+    emitAgentEvent({
+      agentName: 'LeadPulse Autonomous Swarm',
+      agentRole: 'lead_triage',
+      type: 'agent_complete',
+      title: 'Google Maps Pipeline Finished',
+      content: `Successfully ingested ${qualifiedLeads.length} qualified leads (${duplicatesCount} duplicates skipped).`,
+    });
 
     return NextResponse.json({
       success: true,

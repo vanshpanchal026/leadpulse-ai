@@ -2,10 +2,20 @@ import type { Lead } from '../types/lead';
 
 export type PriorityTier = 'immediate' | 'high' | 'medium' | 'skip';
 
+export type CanonicalServiceId =
+  | 'website_development'
+  | 'booking_automation'
+  | 'whatsapp_automation'
+  | 'lead_automation'
+  | 'ai_agents'
+  | 'crm_workflow_automation'
+  | 'business_automation';
+
 export interface ScorecardResult {
   score: number;
   priority: PriorityTier;
   frictionPoints: string[];
+  recommendedService: CanonicalServiceId;
 }
 
 /**
@@ -31,6 +41,13 @@ export const HIGH_TICKET_KEYWORDS: string[] = [
   'dermatolog',
   'cosmetic',
   'plastic surg',
+  'restaurant',
+  'fine dining',
+  'gym',
+  'fitness',
+  'real estate',
+  'realtor',
+  'property',
 ];
 
 /**
@@ -97,7 +114,7 @@ export function isHighTicketNiche(data: Partial<Lead>): boolean {
 }
 
 /**
- * Determines specific operational and conversion friction points for the business.
+ * Determines specific operational and conversion friction points for the business across all 7 services.
  */
 export function detectFrictionPoints(data: Partial<Lead>): string[] {
   // If pre-audited friction points exist, use them
@@ -108,22 +125,83 @@ export function detectFrictionPoints(data: Partial<Lead>): string[] {
   const friction: string[] = [];
   const hasWebsite = isValidWebsiteUrl(data.website_url);
   const reviews = typeof data.review_count === 'number' ? data.review_count : 0;
+  const hasAds = data.has_active_ads === true;
+  const combinedText = `${data.body_text || ''} ${data.identified_problem || ''}`.toLowerCase();
 
+  // 1. Missing official digital presence -> website_development
   if (!hasWebsite) {
-    friction.push('Missing official website for capturing direct inbound appointments');
+    friction.push('Missing official website for capturing direct inbound appointments and search inquiries');
   } else {
-    // Check if website has WhatsApp or instant booking cues in existing text/data
-    const combinedText = `${data.body_text || ''} ${data.identified_problem || ''}`.toLowerCase();
+    // 2. Active Ads form drop-off -> lead_automation
+    if (hasAds && (combinedText.includes('form') || !combinedText.includes('wa.me'))) {
+      friction.push('Active paid ad traffic routed to static landing page with high form abandonment');
+    }
+
+    // 3. Online self-serve appointment friction -> booking_automation
+    if (!combinedText.includes('calendar') && !combinedText.includes('book online') && reviews >= 30) {
+      friction.push('No direct online self-serve calendar booking; reliant on manual telephone scheduling');
+    }
+
+    // 4. Missing instant messaging / WhatsApp response -> whatsapp_automation
     if (!combinedText.includes('whatsapp') && !combinedText.includes('wa.me')) {
-      friction.push('No direct 1-click WhatsApp booking button or inquiry widget on website');
+      friction.push('No direct 1-click WhatsApp inquiry capture for instant after-hours lead response');
     }
   }
 
+  // 5. High customer inquiry volume without automated triage -> ai_agents / inquiry automation
   if (reviews >= 50) {
-    friction.push(`High offline review volume (${reviews} reviews) without 24/7 automated inquiry capture`);
+    friction.push(`High customer inquiry volume (${reviews} reviews) without 24/7 automated inquiry capture`);
   }
 
   return friction;
+}
+
+/**
+ * Maps candidate signals and detected frictions deterministically to one of the 7 canonical services.
+ */
+export function detectRecommendedService(data: Partial<Lead>, frictionPoints: string[]): CanonicalServiceId {
+  const hasWebsite = isValidWebsiteUrl(data.website_url);
+  const hasAds = data.has_active_ads === true;
+  const reviews = typeof data.review_count === 'number' ? data.review_count : 0;
+  const text = `${data.body_text || ''} ${data.identified_problem || ''} ${frictionPoints.join(' ')}`.toLowerCase();
+
+  // 1. Missing website -> website_development
+  if (!hasWebsite || text.includes('missing official website') || text.includes('no accessible website')) {
+    return 'website_development';
+  }
+
+  // 2. Active Paid Ads with form drop-off / conversion leak -> lead_automation
+  if (hasAds && (text.includes('form drop-off') || text.includes('ad traffic') || text.includes('form abandonment'))) {
+    return 'lead_automation';
+  }
+
+  // 3. Appointment / Calendar Scheduling friction -> booking_automation
+  if (
+    text.includes('calendar booking') ||
+    text.includes('telephone scheduling') ||
+    text.includes('appointment') ||
+    (reviews >= 80 && !text.includes('wa.me'))
+  ) {
+    return 'booking_automation';
+  }
+
+  // 4. Repetitive manual inquiries / FAQ -> ai_agents
+  if (text.includes('repetitive') || text.includes('faq') || text.includes('triage') || text.includes('intake flow')) {
+    return 'ai_agents';
+  }
+
+  // 5. Direct WhatsApp instant capture -> whatsapp_automation
+  if (text.includes('whatsapp') || text.includes('after-hours') || text.includes('missed inquiries')) {
+    return 'whatsapp_automation';
+  }
+
+  // 6. CRM / Software sync -> crm_workflow_automation
+  if (text.includes('crm') || text.includes('spreadsheet') || text.includes('sync') || text.includes('n8n')) {
+    return 'crm_workflow_automation';
+  }
+
+  // 7. General business operations -> business_automation
+  return 'business_automation';
 }
 
 /**
@@ -148,6 +226,7 @@ export function detectFrictionPoints(data: Partial<Lead>): string[] {
 export function calculateProspectScore(data: Partial<Lead>): ScorecardResult {
   let score = 0;
   const frictionPoints = detectFrictionPoints(data);
+  const recommendedService = detectRecommendedService(data, frictionPoints);
 
   // 1. Active Ads (+3 pts)
   if (data.has_active_ads === true) {
@@ -199,5 +278,6 @@ export function calculateProspectScore(data: Partial<Lead>): ScorecardResult {
     score: normalizedScore,
     priority,
     frictionPoints,
+    recommendedService,
   };
 }

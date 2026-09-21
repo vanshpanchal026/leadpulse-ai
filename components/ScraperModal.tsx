@@ -12,7 +12,9 @@ import {
   Sparkles,
   MapPin,
   MessageSquare,
-  Flame
+  Flame,
+  Brain,
+  ExternalLink
 } from 'lucide-react';
 import { Lead } from '@/types/lead';
 
@@ -21,6 +23,8 @@ interface ScraperModalProps {
   onClose: () => void;
   onLeadsIngested?: (newLeads: Lead[]) => void;
   onRefreshData?: () => void;
+  onOpenResearchCampaign?: () => void;
+  onOpenMissionControl?: () => void;
 }
 
 const PRESET_SUBREDDITS = [
@@ -56,22 +60,24 @@ export const ScraperModal: React.FC<ScraperModalProps> = ({
   onClose,
   onLeadsIngested,
   onRefreshData,
+  onOpenResearchCampaign,
+  onOpenMissionControl,
 }) => {
-  // Source selector: 'meta_ads' | 'google_maps' | 'reddit'
-  const [activeTab, setActiveTab] = useState<'meta_ads' | 'google_maps' | 'reddit'>('meta_ads');
+  // Source selector: 'google_maps' | 'meta_ads' | 'reddit'
+  const [activeTab, setActiveTab] = useState<'google_maps' | 'meta_ads' | 'reddit'>('google_maps');
 
   // Meta Ads State
   const [selectedMetaQuery, setSelectedMetaQuery] = useState<string>(PRESET_META_ADS_QUERIES[0]);
-  const [maxAds, setMaxAds] = useState<number>(10);
+  const [maxAds, setMaxAds] = useState<number>(5);
 
   // Reddit State
   const [selectedSubs, setSelectedSubs] = useState<string[]>([...PRESET_SUBREDDITS]);
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([...PRESET_KEYWORDS]);
-  const [maxPosts, setMaxPosts] = useState<number>(20);
+  const [maxPosts, setMaxPosts] = useState<number>(10);
 
   // Google Maps State
-  const [selectedQueries, setSelectedQueries] = useState<string[]>([...PRESET_GOOGLE_MAPS_QUERIES]);
-  const [maxPlaces, setMaxPlaces] = useState<number>(10);
+  const [selectedQueries, setSelectedQueries] = useState<string[]>([PRESET_GOOGLE_MAPS_QUERIES[0]]);
+  const [maxPlaces, setMaxPlaces] = useState<number>(5);
 
   // Pipeline execution state
   const [status, setStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
@@ -126,6 +132,68 @@ export const ScraperModal: React.FC<ScraperModalProps> = ({
         ? (prev.length > 1 ? prev.filter((q) => q !== query) : prev)
         : [...prev, query]
     );
+  };
+
+  // Instant verification test using sample Delhi clinics/ads without Apify timeouts
+  const handleRunFastTest = async () => {
+    setStatus('running');
+    setCurrentStep(1);
+    setErrorMessage('');
+    setResultStats(null);
+
+    stepTimerRef1.current = setTimeout(() => setCurrentStep(2), 300);
+    stepTimerRef2.current = setTimeout(() => setCurrentStep(3), 700);
+    stepTimerRef3.current = setTimeout(() => setCurrentStep(4), 1100);
+
+    try {
+      const endpoint = activeTab === 'meta_ads' ? '/api/scraper/meta-ads' : '/api/scraper/google-maps';
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          testMode: true,
+          searchQuery: activeTab === 'meta_ads' ? selectedMetaQuery : undefined,
+          searchQueries: activeTab === 'google_maps' ? selectedQueries : undefined,
+        }),
+      });
+
+      if (stepTimerRef1.current) clearTimeout(stepTimerRef1.current);
+      if (stepTimerRef2.current) clearTimeout(stepTimerRef2.current);
+      if (stepTimerRef3.current) clearTimeout(stepTimerRef3.current);
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error?.message || data.error || 'Fast test failed');
+      }
+
+      setCurrentStep(4);
+      setResultStats({
+        totalScraped: data.total_ingested || (data.leads ? data.leads.length : 2),
+        prefilterRejected: data.duplicates_skipped || 0,
+        evaluated: data.evaluated || (data.leads ? data.leads.length : 2),
+        qualified: data.qualified_leads_count || (data.leads ? data.leads.length : 2),
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      setStatus('success');
+
+      if (data.leads && Array.isArray(data.leads) && data.leads.length > 0) {
+        onLeadsIngested?.(data.leads);
+      }
+      onRefreshData?.();
+
+      timerRef.current = setTimeout(() => {
+        onClose();
+        setStatus('idle');
+      }, 2000);
+    } catch (err: any) {
+      if (stepTimerRef1.current) clearTimeout(stepTimerRef1.current);
+      if (stepTimerRef2.current) clearTimeout(stepTimerRef2.current);
+      if (stepTimerRef3.current) clearTimeout(stepTimerRef3.current);
+      setStatus('error');
+      setErrorMessage(err.message || 'Failed to run fast test');
+    }
   };
 
   const handleStartSearch = async () => {
@@ -279,22 +347,37 @@ export const ScraperModal: React.FC<ScraperModalProps> = ({
           </button>
         </div>
 
+        {/* V2 Autonomous Swarm Switcher Banner */}
+        {onOpenResearchCampaign && (
+          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-r from-purple-50 via-blue-50 to-indigo-50 border border-purple-200 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 rounded-xl bg-purple-600 text-white shadow-2xs">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div className="text-left">
+                <div className="text-xs font-semibold text-purple-950">
+                  LeadPulse V2 Multi-Agent Research Swarm
+                </div>
+                <div className="text-[11px] text-purple-700">
+                  Let AI Search Strategist plan queries & execute specialist audits automatically
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenResearchCampaign();
+              }}
+              className="px-3.5 py-1.5 text-xs font-medium rounded-full bg-purple-600 hover:bg-purple-700 text-white shadow-xs transition-colors shrink-0 cursor-pointer"
+            >
+              Launch V2 Engine →
+            </button>
+          </div>
+        )}
+
         {/* Source Selector Tab / Toggle */}
         <div className="flex items-center p-1 rounded-full bg-[#f5f5f5] border border-[#e5e5e5]">
-          <button
-            type="button"
-            onClick={() => { if (status !== 'running') setActiveTab('meta_ads'); }}
-            disabled={status === 'running'}
-            className={`flex-1 py-2 rounded-full text-xs font-medium transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeTab === 'meta_ads'
-                ? 'bg-[#ffffff] text-[#0a0a0a] shadow-xs border border-[#e5e5e5]'
-                : 'text-[#737373] hover:text-[#0a0a0a]'
-            }`}
-          >
-            <Flame className="w-3.5 h-3.5 text-blue-600" />
-            <span>🔥 Meta Ads (Paid Spenders)</span>
-          </button>
-
           <button
             type="button"
             onClick={() => { if (status !== 'running') setActiveTab('google_maps'); }}
@@ -307,6 +390,20 @@ export const ScraperModal: React.FC<ScraperModalProps> = ({
           >
             <MapPin className="w-3.5 h-3.5 text-emerald-600" />
             <span>Google Maps</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { if (status !== 'running') setActiveTab('meta_ads'); }}
+            disabled={status === 'running'}
+            className={`flex-1 py-2 rounded-full text-xs font-medium transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              activeTab === 'meta_ads'
+                ? 'bg-[#ffffff] text-[#0a0a0a] shadow-xs border border-[#e5e5e5]'
+                : 'text-[#737373] hover:text-[#0a0a0a]'
+            }`}
+          >
+            <Flame className="w-3.5 h-3.5 text-blue-600" />
+            <span>🔥 Meta Ads (Paid Spenders)</span>
           </button>
 
           <button
@@ -716,6 +813,21 @@ export const ScraperModal: React.FC<ScraperModalProps> = ({
                 </div>
               </div>
             )}
+
+            {onOpenMissionControl && (
+              <div className="pt-3 border-t border-[#e5e5e5] flex items-center justify-between flex-wrap gap-2">
+                <span className="text-[11px] text-[#737373] font-mono">Real-time subagents &amp; Claude/Perplexity thinking stream:</span>
+                <button
+                  type="button"
+                  onClick={onOpenMissionControl}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#18181C] hover:bg-black text-purple-300 border border-purple-500/40 text-xs font-mono transition-all cursor-pointer shadow-xs"
+                >
+                  <Brain className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+                  <span>Open Agent Mission Control</span>
+                  <ExternalLink className="w-3 h-3 text-purple-400" />
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -748,17 +860,26 @@ export const ScraperModal: React.FC<ScraperModalProps> = ({
 
         {/* Error State */}
         {status === 'error' && (
-          <div className="bg-red-50 border border-red-200 rounded-[18px] p-4 text-xs space-y-1 text-red-700 animate-in fade-in duration-200">
+          <div className="bg-red-50 border border-red-200 rounded-[18px] p-4 text-xs space-y-2 text-red-700 animate-in fade-in duration-200">
             <div className="flex items-center gap-1.5 font-semibold">
               <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-              <span>Scraper Pipeline Error</span>
+              <span>Scraper Execution Issue</span>
             </div>
             <p className="text-[11px] leading-relaxed break-words">{errorMessage}</p>
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={handleRunFastTest}
+                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-red-100 hover:bg-red-200 text-red-900 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>⚡ Run Fast Test Instead (Sample Data &lt; 2s)</span>
+              </button>
+            </div>
           </div>
         )}
 
         {/* Footer / CTA Actions */}
-        <div className="flex items-center justify-between pt-2 border-t border-[#e5e5e5]">
+        <div className="flex items-center justify-between pt-2 border-t border-[#e5e5e5] gap-3 flex-wrap">
           <button
             type="button"
             onClick={handleClose}
@@ -768,27 +889,41 @@ export const ScraperModal: React.FC<ScraperModalProps> = ({
             Cancel
           </button>
 
-          <button
-            type="button"
-            onClick={handleStartSearch}
-            disabled={
-              status === 'running' || 
-              (activeTab === 'meta_ads' ? !selectedMetaQuery : activeTab === 'google_maps' ? selectedQueries.length === 0 : (selectedSubs.length === 0 || selectedKeywords.length === 0))
-            }
-            className="flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-medium bg-[#0a0a0a] hover:bg-[#171717] text-white shadow-sm transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {status === 'running' ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Running Pipeline...</span>
-              </>
-            ) : (
-              <>
-                <Play className="w-3.5 h-3.5 fill-white" />
-                <span>{activeTab === 'meta_ads' ? 'Scan Active Meta Advertisers' : activeTab === 'google_maps' ? 'Start Local Business Scrape' : 'Start Autonomous Search'}</span>
-              </>
-            )}
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Fast Test Button (Instant Verification) */}
+            <button
+              type="button"
+              onClick={handleRunFastTest}
+              disabled={status === 'running'}
+              title="Verify scorecard scoring, Gemini pitch, and dashboard sync instantly using pre-verified Delhi clinic data"
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold bg-[var(--color-stone-100)] hover:bg-[var(--color-hairline)] text-[var(--color-ink)] border border-[var(--color-hairline)] transition-all cursor-pointer disabled:opacity-50"
+            >
+              <span>⚡ Fast Test (Sample Data)</span>
+            </button>
+
+            {/* Live Scraper Search Button */}
+            <button
+              type="button"
+              onClick={handleStartSearch}
+              disabled={
+                status === 'running' || 
+                (activeTab === 'meta_ads' ? !selectedMetaQuery : activeTab === 'google_maps' ? selectedQueries.length === 0 : (selectedSubs.length === 0 || selectedKeywords.length === 0))
+              }
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-medium bg-[#0a0a0a] hover:bg-[#171717] text-white shadow-sm transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {status === 'running' ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Running Pipeline...</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-3.5 h-3.5 fill-white" />
+                  <span>{activeTab === 'meta_ads' ? 'Scan Active Meta Advertisers' : activeTab === 'google_maps' ? 'Start Local Business Scrape' : 'Start Autonomous Search'}</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

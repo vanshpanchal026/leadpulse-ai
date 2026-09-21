@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { Lead } from '@/types/lead';
 import { calculateProspectScore } from '@/lib/scorecard';
 import { BANNED_PHRASES, countSentences, detectPlaceholders } from '@/lib/anti-spam-validator';
+import { emitAgentEvent } from '@/lib/agent-telemetry';
 
 export const maxDuration = 300; // 5 minute timeout for Next.js / Vercel
 
@@ -16,6 +17,7 @@ export interface MetaAdsScrapeRequest {
   maxAds?: number;      // Default 10 (cost guardrail < $0.10)
   runActor?: boolean;
   items?: any[];
+  testMode?: boolean;
 }
 
 const DEFAULT_SEARCH_QUERY = 'Skin Clinic Delhi';
@@ -355,7 +357,8 @@ interface MetaLeadCandidate {
 async function enrichMetaCandidatesWithGooglePlaces(
   candidates: MetaLeadCandidate[],
   apifyToken?: string,
-  localLeads: Lead[] = []
+  localLeads: Lead[] = [],
+  skipApify: boolean = false
 ): Promise<void> {
   const uniqueBusinesses = Array.from(new Set(candidates.map((c) => c.business_name).filter(Boolean)));
   if (uniqueBusinesses.length === 0) return;
@@ -395,7 +398,7 @@ async function enrichMetaCandidatesWithGooglePlaces(
   // 2. Query Apify Google Places crawler for businesses needing lookup
   const needsLookup = uniqueBusinesses.filter((name) => !placesMap.has(name.toLowerCase().trim()));
 
-  if (needsLookup.length > 0 && apifyToken) {
+  if (needsLookup.length > 0 && apifyToken && !skipApify) {
     try {
       console.log(`[Meta Ads Enrichment] Querying Google Places for: ${needsLookup.join(', ')}`);
       const client = new ApifyClient({ token: apifyToken });
@@ -527,27 +530,31 @@ async function generateMetaAdPitchWithGemini(
     rating?: number;
     reviewCount?: number;
     address?: string;
+    recommendedService?: string;
   },
   maxRetries = 3
 ): Promise<{ draft_pitch: string; identified_problem: string } | null> {
+  const service = adData.recommendedService || 'lead_automation';
   const frictionText =
     adData.frictionPoints.length > 0
       ? adData.frictionPoints.join('; ')
-      : 'Ad traffic routed to standard contact form without direct WhatsApp booking.';
+      : 'Ad traffic routed to standard contact form without direct inquiry conversion or speed-to-lead workflow.';
 
   const systemPrompt = `
-You are an operational consultant contacting a business owner running active paid Meta ads.
-Their biggest bottleneck is ad-spend wastage due to poor inquiry capture or missing direct WhatsApp booking.
-Tone: 2-3 casual peer sentences, zero corporate agency jargon, zero 'We help', reference their active ad and landing page drop-off.
+You are Vansh, a solo freelance developer doing an honest technical observation for a local business running paid Meta ads.
+Tone: Exactly 2 to 3 casual peer sentences (under 300 characters). Write as an individual solo peer typing from a phone or laptop.
+NEVER say "we", "our team", "our agency", or "our clients".
 
-RULES (STRICT PEER-TO-PEER TONE):
-1. 2 to 3 sentences maximum (under 300 characters).
-2. Write as an individual peer typing directly from a phone or laptop.
-3. Reference their active ad offer or campaign directly.
-4. Highlight that ad traffic drops off on landing page forms and that routing clickers straight into an automated WhatsApp booking flow usually doubles booked consults without raising their ad budget.
-5. ZERO corporate or agency buzzwords:
-   - NEVER use: "We help...", "We specialize in...", "Our team", "Game-changer", "Streamline", "Leverage", "Tailored solution", "Let's hop on a call", "Book a demo".
-6. Do NOT include template bracket placeholders like [Name], [Company], or [Clinic].
+STRICT OUTREACH INVARIANTS:
+1. OUTCOME REFRAMING: Never describe services as "AI chatbot" or "automation". Reframe entirely around concrete outcomes: capturing missed ad clickers, eliminating multi-step form abandonment, converting ad traffic directly into bookings 24/7.
+2. NO MEETING REQUESTS: Never ask to "hop on a call", "book a call", "schedule a demo", or "quick chat".
+3. NO PRICING: Never mention pricing or fees.
+4. NO PAST CLIENT FABRICATION: Never fabricate past clients or case studies.
+5. LEAD WITH TECHNICAL OBSERVATION: Open directly with a genuine observation on their active ad offer or landing page setup — never open with a sales pitch.
+6. ZERO BUZZWORDS: Banned words: "streamline", "leverage", "game-changer", "tailored solution", "reach out anytime", "feel free to DM".
+7. Do NOT include template bracket placeholders like [Name], [Company], or [Clinic].
+
+Target Service Bottleneck: ${service}
 
 Return strictly valid JSON:
 {
@@ -624,19 +631,69 @@ Target Business & Ad Data:
   };
 }
 
+function isAuthorized(req: NextRequest): boolean {
+  if (process.env.NODE_ENV !== 'production') {
+    return true;
+  }
+  const secret = process.env.INTERNAL_API_SECRET;
+  if (!secret) {
+    return true;
+  }
+  const internalSecret = req.headers.get('x-internal-secret');
+  const authHeader = req.headers.get('authorization');
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+
+  return internalSecret === secret || bearerToken === secret;
+}
+
 export async function POST(req: NextRequest) {
   try {
+    if (!isAuthorized(req)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Unauthorized: Invalid or missing internal API secret.',
+          },
+        },
+        { status: 401 }
+      );
+    }
+
     const apifyToken = process.env.APIFY_API_TOKEN || process.env.APIFY_TOKEN;
     const geminiKey = process.env.GEMINI_API_KEY;
 
     const body: MetaAdsScrapeRequest = await req.json().catch(() => ({}));
     const searchQuery = (body.searchQuery || DEFAULT_SEARCH_QUERY).trim();
-    const maxAds = Math.min(Math.max(1, body.maxAds || 10), 30);
+    const maxAds = Math.min(Math.max(1, body.maxAds || 5), 15);
 
     let rawItems: any[] = [];
 
-    // 1. Apify Actor Execution (or supplied items)
-    if (body.runActor === true || (Array.isArray(body.items) && body.items.length === 0 && !body.items)) {
+    // 1. Fast Test Mode or Apify Actor Execution
+    if (body.testMode === true) {
+      console.log('[Meta Ads Pipeline] Running Fast Test with verified Meta ad samples...');
+      rawItems = [
+        {
+          pageName: "Luxe Skin & Aesthetics Delhi",
+          pageProfilePicture: "",
+          adCreativeBody: "Special Offer: 40% OFF HydraFacial & Laser Hair Reduction this week in South Delhi! Book via WhatsApp at +91 98112 34567.",
+          adSnapshotUrl: "https://www.facebook.com/ads/library/?id=act_1010101",
+          linkUrl: "https://luxeskinclinic.in",
+          adDeliveryStartDate: new Date().toISOString(),
+          category: "Health/beauty"
+        },
+        {
+          pageName: "Apex Dental Implant Clinic South Delhi",
+          pageProfilePicture: "",
+          adCreativeBody: "Permanent Dental Implants starting at ₹19,999. Free consultation & 0% EMI options. Call or WhatsApp +91 98188 76543.",
+          adSnapshotUrl: "https://www.facebook.com/ads/library/?id=act_1010102",
+          linkUrl: "https://apexdentaldelhi.com",
+          adDeliveryStartDate: new Date().toISOString(),
+          category: "Dentist & Dental Clinic"
+        }
+      ];
+    } else if (body.runActor === true || (Array.isArray(body.items) && body.items.length === 0 && !body.items)) {
       if (!apifyToken) {
         return NextResponse.json(
           {
@@ -678,16 +735,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (rawItems.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: 'EMPTY_INPUT',
-            message: 'No Meta ad items returned or provided. Pass "items": [...] or set "runActor": true.',
-          },
-        },
-        { status: 400 }
-      );
+      return NextResponse.json({
+        success: true,
+        message: `No active Meta ads found for "${searchQuery}".`,
+        total_ingested: 0,
+        duplicates_skipped: 0,
+        evaluated: 0,
+        qualified_leads_count: 0,
+        leads: []
+      });
     }
 
     console.log(`[Meta Ads Pipeline] Processing ${rawItems.length} raw ad records...`);
@@ -881,14 +937,14 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      // --- Deduplication Check: Supabase & Local leads.json ---
+      // --- Deduplication Check: Supabase & Local leads.json (bypassed in testMode) ---
       const isAlreadyInDbOrLocal = Boolean(
         (normalizedBusiness && trackedBusinessNames.has(normalizedBusiness)) ||
         (normalizedPhone && trackedPhones.has(normalizedPhone)) ||
         (sourceUrl && trackedUrls.has(urlKey))
       );
 
-      if (isAlreadyInDbOrLocal) {
+      if (isAlreadyInDbOrLocal && !body.testMode) {
         duplicatesCount++;
         continue;
       }
@@ -950,7 +1006,7 @@ export async function POST(req: NextRequest) {
     // 4. Unified Auto-Enrichment: Background Google Places Lookup & Scorecard Recalculation
     if (candidates.length > 0) {
       console.log(`[Meta Ads Pipeline] Triggering Google Places enrichment for ${candidates.length} candidates...`);
-      await enrichMetaCandidatesWithGooglePlaces(candidates, apifyToken, localLeads);
+      await enrichMetaCandidatesWithGooglePlaces(candidates, apifyToken, localLeads, Boolean(body.testMode));
     }
 
     // 5. Gemini 2.5 Flash Pitch Generation
@@ -968,86 +1024,100 @@ export async function POST(req: NextRequest) {
 
     const qualifiedLeads: Lead[] = [];
 
-    for (let i = 0; i < candidates.length; i++) {
-      const cand = candidates[i];
-      const { scorecard } = cand;
+    await Promise.all(
+      candidates.map(async (cand) => {
+        const { scorecard } = cand;
+        let draftPitch = '';
+        let identifiedProblem = cand.frictionPoints.join('; ');
 
-      let draftPitch = '';
-      let identifiedProblem = cand.frictionPoints.join('; ');
+        if (scorecard.score >= 6 && geminiModel) {
+          try {
+            console.log(`[Meta Ads Pipeline] Generating pitch for "${cand.business_name}" (${scorecard.recommendedService}, Score: ${scorecard.score}/10)...`);
+            const pitchRes = await generateMetaAdPitchWithGemini(geminiModel, {
+              businessName: cand.business_name,
+              adOffer: cand.ad_offer,
+              landingPage: cand.website_url,
+              frictionPoints: cand.frictionPoints,
+              rating: cand.rating,
+              reviewCount: cand.review_count,
+              address: cand.address,
+              recommendedService: scorecard.recommendedService,
+            });
 
-      if (scorecard.score >= 6 && geminiModel) {
-        console.log(`[Meta Ads Pipeline] Generating pitch (${i + 1}/${candidates.length}) for "${cand.business_name}" (Score: ${scorecard.score}/10)...`);
-        const pitchRes = await generateMetaAdPitchWithGemini(geminiModel, {
-          businessName: cand.business_name,
-          adOffer: cand.ad_offer,
-          landingPage: cand.website_url,
-          frictionPoints: cand.frictionPoints,
-          rating: cand.rating,
-          reviewCount: cand.review_count,
+            if (pitchRes) {
+              draftPitch = pitchRes.draft_pitch;
+              identifiedProblem = pitchRes.identified_problem;
+            }
+          } catch (e: any) {
+            console.warn(`[Meta Ads Pipeline] Gemini pitch fallback for "${cand.business_name}":`, e.message);
+          }
+        }
+
+        if (!draftPitch) {
+          switch (scorecard.recommendedService) {
+            case 'booking_automation':
+              draftPitch = `Hey, saw your active Instagram ad for ${cand.ad_offer || cand.business_name}. Directing high-intent ad clickers to telephone lines often loses bookings after hours — a self-serve calendar booking link usually captures double the consults.`;
+              break;
+            case 'website_development':
+              draftPitch = `Hey, saw your active Instagram ad for ${cand.ad_offer || cand.business_name}. Noticed traffic lands on a slow or non-responsive page — upgrading to a fast mobile web application eliminates clicker bounce and boosts conversions.`;
+              break;
+            default:
+              draftPitch = `Hey, saw your active Instagram ad for ${cand.ad_offer || cand.business_name}. Are incoming leads going to that standard form on your site or straight to an instant inquiry route? A lot of ad traffic drops off on forms — instant qualification usually doubles consults without raising your ad budget.`;
+              break;
+          }
+        }
+
+        let handleOrPage = cand.business_name;
+        if (cand.instagram_url) {
+          const igMatch = cand.instagram_url.match(/instagram\.com\/([a-zA-Z0-9_.]+)/);
+          if (igMatch && igMatch[1]) {
+            handleOrPage = `@${igMatch[1]}`;
+          }
+        }
+
+        const reviewsText = typeof cand.review_count === 'number' && cand.review_count > 0
+          ? ` Rating: ${cand.rating ? cand.rating.toFixed(1) : ''}★ (${cand.review_count} reviews).`
+          : '';
+        const addressText = cand.address ? ` Address: ${cand.address}.` : '';
+
+        const variationsText = cand.ad_variations && cand.ad_variations.length > 1
+          ? ` Ad Variations: ${cand.ad_variations.slice(0, 3).join(' | ')}.`
+          : '';
+
+        const leadRecord: Lead = {
+          id: crypto.randomUUID(),
+          source_platform: 'meta_ads',
+          source_url: cand.source_url,
+          author: cand.business_name,
+          subreddit_or_handle: handleOrPage,
+          title: cand.business_name,
+          body_text: `Active Meta Ad: "${cand.ad_offer}". Ad copy: ${cand.ad_copy || 'Active sponsored campaign'}.${variationsText}${reviewsText}${addressText} Landing page: ${cand.website_url || 'None'}. Phone: ${cand.phone_number || 'None'}.`,
+          identified_problem: identifiedProblem,
+          business_type: cand.business_type,
+          confidence_score: scorecard.score,
+          draft_pitch: draftPitch,
+          status: 'new',
+          created_at: new Date().toISOString(),
+
+          // Local & Meta Ads prospecting properties
+          business_name: cand.business_name,
+          phone_number: cand.phone_number,
+          website_url: cand.website_url,
+          instagram_url: cand.instagram_url,
+          google_maps_url: cand.google_maps_url,
           address: cand.address,
-        });
+          rating: cand.rating,
+          review_count: cand.review_count,
+          has_active_ads: true,
+          prospect_score: scorecard.score,
+          audit_friction_points: cand.frictionPoints,
+          direct_contact_channel: cand.phone_number ? 'whatsapp' : 'email',
+          recommended_service: scorecard.recommendedService,
+        };
 
-        if (pitchRes) {
-          draftPitch = pitchRes.draft_pitch;
-          identifiedProblem = pitchRes.identified_problem;
-        }
-
-        if (i < candidates.length - 1) {
-          await sleep(1000);
-        }
-      } else {
-        draftPitch = `Hey, saw your active Instagram ad for ${cand.ad_offer || cand.business_name}. Are incoming leads going to that standard form on your site or straight to WhatsApp? A lot of ad traffic drops off on forms — routing clickers straight into an automated WhatsApp booking flow usually doubles the booked consults without raising your ad budget.`;
-      }
-
-      let handleOrPage = cand.business_name;
-      if (cand.instagram_url) {
-        const igMatch = cand.instagram_url.match(/instagram\.com\/([a-zA-Z0-9_.]+)/);
-        if (igMatch && igMatch[1]) {
-          handleOrPage = `@${igMatch[1]}`;
-        }
-      }
-
-      const reviewsText = typeof cand.review_count === 'number' && cand.review_count > 0
-        ? ` Rating: ${cand.rating ? cand.rating.toFixed(1) : ''}★ (${cand.review_count} reviews).`
-        : '';
-      const addressText = cand.address ? ` Address: ${cand.address}.` : '';
-
-      const variationsText = cand.ad_variations && cand.ad_variations.length > 1
-        ? ` Ad Variations: ${cand.ad_variations.slice(0, 3).join(' | ')}.`
-        : '';
-
-      const leadRecord: Lead = {
-        id: crypto.randomUUID(),
-        source_platform: 'meta_ads',
-        source_url: cand.source_url,
-        author: cand.business_name,
-        subreddit_or_handle: handleOrPage,
-        title: cand.business_name,
-        body_text: `Active Meta Ad: "${cand.ad_offer}". Ad copy: ${cand.ad_copy || 'Active sponsored campaign'}.${variationsText}${reviewsText}${addressText} Landing page: ${cand.website_url || 'None'}. Phone: ${cand.phone_number || 'None'}.`,
-        identified_problem: identifiedProblem,
-        business_type: cand.business_type,
-        confidence_score: scorecard.score,
-        draft_pitch: draftPitch,
-        status: 'new',
-        created_at: new Date().toISOString(),
-
-        // Local & Meta Ads prospecting properties
-        business_name: cand.business_name,
-        phone_number: cand.phone_number,
-        website_url: cand.website_url,
-        instagram_url: cand.instagram_url,
-        google_maps_url: cand.google_maps_url,
-        address: cand.address,
-        rating: cand.rating,
-        review_count: cand.review_count,
-        has_active_ads: true,
-        prospect_score: scorecard.score,
-        audit_friction_points: scorecard.frictionPoints,
-        direct_contact_channel: 'whatsapp',
-      };
-
-      qualifiedLeads.push(leadRecord);
-    }
+        qualifiedLeads.push(leadRecord);
+      })
+    );
 
     // 6. Database Upsert & Local JSON Backup
     if (qualifiedLeads.length > 0) {

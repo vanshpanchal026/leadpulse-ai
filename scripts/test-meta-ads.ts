@@ -1,7 +1,6 @@
+import 'dotenv/config';
 import { POST } from '../app/api/scraper/meta-ads/route';
 import { NextRequest } from 'next/server';
-import dotenv from 'dotenv';
-dotenv.config();
 
 async function runTest() {
   console.log('Testing /api/scraper/meta-ads with a batch of 3 Meta ads...');
